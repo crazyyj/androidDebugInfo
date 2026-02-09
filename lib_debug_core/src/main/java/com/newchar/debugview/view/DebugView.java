@@ -8,7 +8,6 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import com.newchar.debug.common.utils.Prompt;
 import com.newchar.debugview.api.PluginContext;
@@ -78,6 +77,7 @@ public class DebugView extends LinearLayout {
     private final PluginContext mPluginContext = new PluginContext();
     private ScreenDisplayPlugin mCurrentPlugin = null;
     private final List<ScreenDisplayPlugin> mPagePlugin = new ArrayList<>();
+    private MoveTouchListener.MoveHandler mMoveHandler;
 
     public DebugView(Context context) {
         this(context, null);
@@ -102,7 +102,7 @@ public class DebugView extends LinearLayout {
         Context context = getContext();
         LinearLayout titleController = new LinearLayout(context);
         titleController.setGravity(Gravity.END);
-        titleController.setOnTouchListener(new MoveTouchListener(this));
+        titleController.setOnTouchListener(new MoveTouchListener(this, mMoveHandler));
 
         initCopyView(context);
         initFoldView(context);
@@ -202,9 +202,19 @@ public class DebugView extends LinearLayout {
         return textView;
     }
 
+    /**
+     * 设置拖动处理器。
+     *
+     * @param moveHandler 拖动处理器
+     */
+    public void setMoveHandler(MoveTouchListener.MoveHandler moveHandler) {
+        mMoveHandler = moveHandler;
+    }
+
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
+        DebugViewStore.attach(this);
         try {
             mPluginContext.mApp = getContext().getApplicationContext();
             // TitleView区域回调.
@@ -219,6 +229,7 @@ public class DebugView extends LinearLayout {
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        DebugViewStore.detach(this);
         removeAllViews();
         unloadPlugin();
     }

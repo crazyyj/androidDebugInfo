@@ -8,6 +8,11 @@
 
     <application>
 
+        <activity
+            android:name="com.newchar.debugview.DebugPanelActivity"
+            android:enabled="true"
+            android:exported="false" />
+
         <service
             android:name="com.newchar.debugview.FloatViewService"
             android:enabled="true"
