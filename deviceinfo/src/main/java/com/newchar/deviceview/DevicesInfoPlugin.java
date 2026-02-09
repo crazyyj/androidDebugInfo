@@ -27,8 +27,11 @@ import java.io.File;
 public class DevicesInfoPlugin extends ScreenDisplayPlugin {
 
     public static final String TAG_PLUGIN = "DEVICE_DEBUG";
+    private static final String TEXT_STRICT_ON = "开启严格模式";
+    private static final String TEXT_STRICT_OFF = "关闭严格模式";
 
     private ViewGroup mContainerView;
+    private TextView mStrictSwitchView;
 
     @Override
     public String id() {
@@ -83,7 +86,6 @@ public class DevicesInfoPlugin extends ScreenDisplayPlugin {
         LinearLayout layout = new LinearLayout(context);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.addView(buildStrictRow(context));
-        layout.addView(buildActionView(context, "关闭严格模式", v -> Strict.stopAll()));
         layout.addView(buildActionView(context, "开发者选项", v ->
                 openPage(v, new Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))));
         layout.addView(buildActionView(context, "应用设置", v ->
@@ -102,9 +104,35 @@ public class DevicesInfoPlugin extends ScreenDisplayPlugin {
     private View buildStrictRow(Context context) {
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        row.addView(buildActionView(context, "开启严格模式", v -> Strict.startAll()));
+        row.addView(buildStrictSwitchView(context));
         row.addView(buildActionView(context, "清理存储", this::confirmClearStorage));
         return row;
+    }
+
+    /**
+     * 构建严格模式开关按钮。
+     *
+     * @param context 上下文
+     * @return 开关视图
+     */
+    private View buildStrictSwitchView(Context context) {
+        mStrictSwitchView = (TextView) buildActionView(context, "", v -> {
+            boolean enabled = Strict.toggleAll();
+            updateStrictSwitchText(enabled);
+        });
+        updateStrictSwitchText(Strict.isEnabled());
+        return mStrictSwitchView;
+    }
+
+    /**
+     * 更新严格模式开关文案。
+     *
+     * @param enabled 当前是否开启
+     */
+    private void updateStrictSwitchText(boolean enabled) {
+        if (mStrictSwitchView != null) {
+            mStrictSwitchView.setText(enabled ? TEXT_STRICT_OFF : TEXT_STRICT_ON);
+        }
     }
 
     /**

@@ -12,12 +12,15 @@ import com.newchar.debugview.utils.DebugUtils;
  */
 public class Strict {
 
+    private static boolean sEnabled;
+
     /**
      * 开启全部严格模式策略。
      */
     public static void startAll() {
         thread(true);
         vm(true);
+        sEnabled = true;
     }
 
     /**
@@ -26,6 +29,30 @@ public class Strict {
     public static void stopAll() {
         thread(false);
         vm(false);
+        sEnabled = false;
+    }
+
+    /**
+     * 切换严格模式开关状态。
+     *
+     * @return 切换后的状态
+     */
+    public static boolean toggleAll() {
+        if (sEnabled) {
+            stopAll();
+        } else {
+            startAll();
+        }
+        return sEnabled;
+    }
+
+    /**
+     * 判断严格模式是否启用。
+     *
+     * @return true 代表当前处于开启状态
+     */
+    public static boolean isEnabled() {
+        return sEnabled;
     }
 
     /**

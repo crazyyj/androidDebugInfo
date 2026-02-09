@@ -8,6 +8,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.fragment.app.Fragment;
 
 import com.newchar.debug.logview.LogViewPlugin;
+import com.newchar.debugview.annotation.DebugUiContext;
 import com.newchar.debugview.DebugManager;
 
 /**
@@ -16,6 +17,7 @@ import com.newchar.debugview.DebugManager;
  * @since sampleActivity
  * @since 迭代版本，（以及描述）
  */
+@DebugUiContext
 public class MainActivity extends AppCompatActivity {
 
     @Override
