@@ -26,6 +26,9 @@ import java.util.Map;
 public class FragmentWrapper {
 
     private IPageLifecycle mPageLifecycle;
+    private Activity mHostActivity;
+    private FragmentManager.FragmentLifecycleCallbacks mPlatformCallbacks;
+    private FragmentManager.OnBackStackChangedListener mLegacyListener;
 
     // Legacy tracking for pre-O platform fragments
     private final HashSet<Integer> mKnown = new HashSet<>();
@@ -37,8 +40,14 @@ public class FragmentWrapper {
     }
 
     public void setFragmentLifecycle(Activity activity) {
+        if (mHostActivity == activity && (mPlatformCallbacks != null || mLegacyListener != null)) {
+            return;
+        }
+        release();
+        mHostActivity = activity;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            activity.getFragmentManager().registerFragmentLifecycleCallbacks(new FragmentLifecycleCallbacks(mPageLifecycle), true);
+            mPlatformCallbacks = new FragmentLifecycleCallbacks(mPageLifecycle);
+            activity.getFragmentManager().registerFragmentLifecycleCallbacks(mPlatformCallbacks, true);
         } else {
             // Pre-O fallback: use back stack listener + reflection to enumerate fragments
             registerLegacyCallbacks(activity);
@@ -48,14 +57,33 @@ public class FragmentWrapper {
     // --- Legacy support below API 26 ---
     private void registerLegacyCallbacks(Activity activity) {
         FragmentManager fm = activity.getFragmentManager();
-        fm.addOnBackStackChangedListener(new FragmentManager.OnBackStackChangedListener() {
+        mLegacyListener = new FragmentManager.OnBackStackChangedListener() {
             @Override
             public void onBackStackChanged() {
                 notifyFragments(activity);
             }
-        });
+        };
+        fm.addOnBackStackChangedListener(mLegacyListener);
         // Initial scan
         notifyFragments(activity);
+    }
+
+    public void release() {
+        if (mHostActivity != null) {
+            FragmentManager fm = mHostActivity.getFragmentManager();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && mPlatformCallbacks != null) {
+                fm.unregisterFragmentLifecycleCallbacks(mPlatformCallbacks);
+            }
+            if (mLegacyListener != null) {
+                fm.removeOnBackStackChangedListener(mLegacyListener);
+            }
+        }
+        mPlatformCallbacks = null;
+        mLegacyListener = null;
+        mHostActivity = null;
+        mKnown.clear();
+        mFragRefs.clear();
+        mFragClasses.clear();
     }
 
     private void notifyFragments(Activity activity) {

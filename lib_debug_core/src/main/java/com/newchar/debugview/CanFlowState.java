@@ -3,7 +3,6 @@ package com.newchar.debugview;
 import android.content.Context;
 import android.graphics.PixelFormat;
 import android.os.Build;
-import android.util.DisplayMetrics;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
@@ -24,8 +23,6 @@ class CanFlowState implements IFLowState {
     private WindowManager mWindowManager;
     private WindowManager.LayoutParams mWindowParams;
     private boolean mAttached;
-    private int mScreenWidth;
-    private int mScreenHeight;
 
     /**
      * 初始化并挂载悬浮窗参数。
@@ -39,7 +36,6 @@ class CanFlowState implements IFLowState {
         if (mWindowManager == null || mAttached) {
             return;
         }
-        ensureScreenSize(context);
         ensureLayoutParams();
         mWindowManager.addView(mDebugView, mWindowParams);
         mAttached = true;
@@ -96,8 +92,6 @@ class CanFlowState implements IFLowState {
             mWindowManager.removeView(mDebugView);
         }
         mAttached = false;
-        mScreenWidth = 0;
-        mScreenHeight = 0;
         mWindowParams = null;
         mWindowManager = null;
         mDebugView = null;
@@ -141,26 +135,13 @@ class CanFlowState implements IFLowState {
                 resolveWindowType(),
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                         | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
                         | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT
         );
         mWindowParams.gravity = Gravity.TOP | Gravity.START;
         mWindowParams.x = mWindowRect.left;
         mWindowParams.y = mWindowRect.top;
-    }
-
-    /**
-     * 同步屏幕宽高。
-     *
-     * @param context 上下文
-     */
-    private void ensureScreenSize(Context context) {
-        if (context == null || (mScreenWidth > 0 && mScreenHeight > 0)) {
-            return;
-        }
-        DisplayMetrics displayMetrics = context.getResources().getDisplayMetrics();
-        mScreenWidth = displayMetrics.widthPixels;
-        mScreenHeight = displayMetrics.heightPixels;
     }
 
     /**
@@ -174,59 +155,9 @@ class CanFlowState implements IFLowState {
         if (!mAttached || mWindowManager == null || mWindowParams == null || control == null) {
             return;
         }
-        ensureScreenSize(control.getContext());
-        int nextX = mWindowParams.x + Math.round(deltaX);
-        int nextY = mWindowParams.y + Math.round(deltaY);
-        int windowWidth = resolveWindowWidth(control);
-        int windowHeight = resolveWindowHeight(control);
-        int minX = -windowWidth;
-        int maxX = mScreenWidth + windowWidth;
-        int minY = -windowHeight;
-        int maxY = mScreenHeight + windowHeight;
-        mWindowParams.x = clamp(nextX, minX, maxX);
-        mWindowParams.y = clamp(nextY, minY, maxY);
+        mWindowParams.x = mWindowParams.x + Math.round(deltaX);
+        mWindowParams.y = mWindowParams.y + Math.round(deltaY);
         mWindowManager.updateViewLayout(control, mWindowParams);
-    }
-
-    /**
-     * 计算当前窗口宽度。
-     *
-     * @param control 被拖动视图
-     * @return 窗口宽度
-     */
-    private int resolveWindowWidth(View control) {
-        if (control.getWidth() > 0) {
-            return control.getWidth();
-        }
-        return Math.max(0, mWindowParams.width);
-    }
-
-    /**
-     * 计算当前窗口高度。
-     *
-     * @param control 被拖动视图
-     * @return 窗口高度
-     */
-    private int resolveWindowHeight(View control) {
-        if (control.getHeight() > 0) {
-            return control.getHeight();
-        }
-        return Math.max(0, mWindowParams.height);
-    }
-
-    /**
-     * 限制数值在给定范围内。
-     *
-     * @param value 当前值
-     * @param min 最小值
-     * @param max 最大值
-     * @return 限制后的结果
-     */
-    private int clamp(int value, int min, int max) {
-        if (value < min) {
-            return min;
-        }
-        return Math.min(value, max);
     }
 
     /**

@@ -109,6 +109,7 @@ public class DebugManager {
                 public void onAppOpen(Activity firstActivity) {
                     registerOptionalPlugin("com.newchar.debug.logview.LogViewPlugin");
                     registerOptionalPlugin("com.newchar.monitor.plugin.PageTaskTopPlugin");
+                    registerOptionalPlugin("com.newchar.monitor.plugin.MethodFieldMonitorPlugin");
                     registerOptionalPlugin("com.newchar.deviceview.DevicesInfoPlugin");
                 }
 

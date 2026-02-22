@@ -6,14 +6,22 @@ import android.util.Log;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArraySet;
 
 public final class DebugStackMotion {
 
     private static int init;
+    private static volatile boolean fieldModificationEnabled;
+    private static volatile boolean callbackBridgePrepared;
     private static DebugStackMotionCallback callback;
+    private static final Set<RawMethodCallback> rawMethodCallbacks = new CopyOnWriteArraySet<>();
+    private static final Set<RawVariableCallback> rawVariableCallbacks = new CopyOnWriteArraySet<>();
     private static final Set<Method> monitoredMethods = new HashSet<>();
+    private static final Map<String, Field> monitoredFields = new HashMap<>();
 
     static {
         attachAgentSys("jvmti");
@@ -60,7 +68,94 @@ public final class DebugStackMotion {
      * @param cb 回调
      */
     public static void setCallback(DebugStackMotionCallback cb) {
+        ensureCallbackBridgePrepared();
         callback = cb;
+    }
+
+    /**
+     * 设置轻量方法事件回调，直接透传 native 上报的原始参数。
+     *
+     * @param cb 回调
+     */
+    public static void setRawMethodCallback(RawMethodCallback cb) {
+        ensureCallbackBridgePrepared();
+        rawMethodCallbacks.clear();
+        if (cb != null) {
+            rawMethodCallbacks.add(cb);
+        }
+    }
+
+    /**
+     * 追加轻量方法事件回调。
+     */
+    public static void addRawMethodCallback(RawMethodCallback cb) {
+        if (cb == null) {
+            return;
+        }
+        ensureCallbackBridgePrepared();
+        rawMethodCallbacks.add(cb);
+    }
+
+    /**
+     * 移除轻量方法事件回调。
+     */
+    public static void removeRawMethodCallback(RawMethodCallback cb) {
+        if (cb == null) {
+            return;
+        }
+        rawMethodCallbacks.remove(cb);
+    }
+
+    /**
+     * 设置轻量字段修改回调，直接透传 native 上报的原始参数。
+     *
+     * @param cb 回调
+     */
+    public static void setRawVariableCallback(RawVariableCallback cb) {
+        ensureCallbackBridgePrepared();
+        rawVariableCallbacks.clear();
+        if (cb != null) {
+            rawVariableCallbacks.add(cb);
+        }
+    }
+
+    /**
+     * 追加轻量字段修改回调。
+     */
+    public static void addRawVariableCallback(RawVariableCallback cb) {
+        if (cb == null) {
+            return;
+        }
+        ensureCallbackBridgePrepared();
+        rawVariableCallbacks.add(cb);
+    }
+
+    /**
+     * 移除轻量字段修改回调。
+     */
+    public static void removeRawVariableCallback(RawVariableCallback cb) {
+        if (cb == null) {
+            return;
+        }
+        rawVariableCallbacks.remove(cb);
+    }
+
+    /**
+     * 动态开关字段修改事件（JVMTI_EVENT_FIELD_MODIFICATION）。
+     *
+     * @param enabled true: 启用；false: 关闭
+     */
+    public static void setFieldModificationEnabled(boolean enabled) {
+        ensureCallbackBridgePrepared();
+        fieldModificationEnabled = enabled;
+        setFieldModificationEnabledNative(enabled);
+    }
+
+    /**
+     * 当前字段修改事件开关状态（Java 侧缓存）。
+     */
+    public static boolean isFieldModificationEnabled() {
+        return fieldModificationEnabled;
     }
 
     /**
@@ -101,13 +196,75 @@ public final class DebugStackMotion {
     }
 
     /**
+     * 清理已注册的方法监听。
+     */
+    public static void clearRegisteredMethods() {
+        monitoredMethods.clear();
+        clearRegisteredMethodsNative();
+    }
+
+    /**
      * 释放当前监听资源。
      */
     public static void release() {
         callback = null;
+        rawMethodCallbacks.clear();
+        rawVariableCallbacks.clear();
+        callbackBridgePrepared = false;
         monitoredMethods.clear();
+        monitoredFields.clear();
         clearRegisteredMethodsNative();
+        clearRegisteredFieldsNative();
         releaseNative();
+    }
+
+    /**
+     * 注册字段修改监听（字段必须先注册，JVMTI 才会上报 FieldModification）。
+     */
+    public static void registerField(Field field) {
+        if (field == null) {
+            return;
+        }
+        registerField(field.getDeclaringClass(), field);
+    }
+
+    /**
+     * 按类+字段名注册字段修改监听。
+     */
+    public static void registerField(Class<?> ownerClass, String fieldName) {
+        if (ownerClass == null || fieldName == null || fieldName.isEmpty()) {
+            return;
+        }
+        try {
+            Field field = ownerClass.getDeclaredField(fieldName);
+            field.setAccessible(true);
+            registerField(ownerClass, field);
+        } catch (NoSuchFieldException ignored) {
+        }
+    }
+
+    /**
+     * 注册字段修改监听。
+     */
+    public static void registerField(Class<?> ownerClass, Field field) {
+        if (ownerClass == null || field == null) {
+            return;
+        }
+        ensureCallbackBridgePrepared();
+        String fieldKey = ownerClass.getName() + "#" + field.getName();
+        if (monitoredFields.containsKey(fieldKey)) {
+            return;
+        }
+        monitoredFields.put(fieldKey, field);
+        registerFieldNative(ownerClass, field);
+    }
+
+    /**
+     * 清理已注册的字段监听。
+     */
+    public static void clearRegisteredFields() {
+        monitoredFields.clear();
+        clearRegisteredFieldsNative();
     }
 
     /**
@@ -122,7 +279,19 @@ public final class DebugStackMotion {
      * 预留初始化入口。
      */
     public static void init() {
+        ensureCallbackBridgePrepared();
+    }
 
+    private static void ensureCallbackBridgePrepared() {
+        if (callbackBridgePrepared) {
+            return;
+        }
+        try {
+            prepareCallbackBridgeNative(DebugStackMotion.class);
+            callbackBridgePrepared = true;
+        } catch (Throwable t) {
+            Log.w("AAA", "prepare callback bridge failed", t);
+        }
     }
 
     /**
@@ -134,6 +303,9 @@ public final class DebugStackMotion {
      * @param isEnter    是否进入方法
      */
     public static void onMethodVisit(String className, String methodName, String methodDesc, boolean isEnter) {
+        for (RawMethodCallback rawCb : rawMethodCallbacks) {
+            rawCb.onMethodVisit(className, methodName, methodDesc, isEnter);
+        }
         DebugStackMotionCallback cb = callback;
         if (cb == null) {
             return;
@@ -157,6 +329,9 @@ public final class DebugStackMotion {
      */
     public static void onVariableVisit(String className, String methodName, String methodDesc, String fieldName,
             Object newValue, boolean isSet) {
+        for (RawVariableCallback rawCb : rawVariableCallbacks) {
+            rawCb.onVariableVisit(className, methodName, methodDesc, fieldName, newValue, isSet);
+        }
         DebugStackMotionCallback cb = callback;
         if (cb == null) {
             return;
@@ -304,7 +479,42 @@ public final class DebugStackMotion {
     private static native void clearRegisteredMethodsNative();
 
     /**
+     * native 方法：注册字段监听。
+     */
+    private static native void registerFieldNative(Class<?> ownerClass, Field field);
+
+    /**
+     * native 方法：清理字段监听。
+     */
+    private static native void clearRegisteredFieldsNative();
+
+    /**
      * native 方法：释放资源。
      */
     private static native void releaseNative();
+
+    /**
+     * native 方法：动态开关字段修改事件。
+     */
+    private static native void setFieldModificationEnabledNative(boolean enabled);
+
+    /**
+     * native 方法：预缓存 DebugStackMotion 回调桥接类与方法。
+     */
+    private static native void prepareCallbackBridgeNative(Class<?> bridgeClass);
+
+    /**
+     * 轻量方法回调：不做反射，直接消费原始事件参数。
+     */
+    public interface RawMethodCallback {
+        void onMethodVisit(String className, String methodName, String methodDesc, boolean isEnter);
+    }
+
+    /**
+     * 轻量字段修改回调：不做反射，直接消费原始事件参数。
+     */
+    public interface RawVariableCallback {
+        void onVariableVisit(String className, String methodName, String methodDesc,
+                String fieldName, Object newValue, boolean isSet);
+    }
 }

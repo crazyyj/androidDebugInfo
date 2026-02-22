@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/dialog_popup_demo_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:text="AlertDialog 演示（AppCompatActivity）"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btn_alert_basic"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:text="基础 AlertDialog" />
+
+            <Button
+                android:id="@+id/btn_alert_single_choice"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:text="单选 AlertDialog" />
+
+            <Button
+                android:id="@+id/btn_alert_multi_choice"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:text="多选 AlertDialog" />
+
+            <Button
+                android:id="@+id/btn_alert_list"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:text="列表 AlertDialog" />
+
+            <Button
+                android:id="@+id/btn_alert_custom"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                android:text="自定义 AlertDialog" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:text="PopupWindow 演示"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btn_popup_anchor"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:text="固定 Anchor（showAsDropDown 使用）" />
+
+            <Button
+                android:id="@+id/btn_popup_dropdown_show"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:text="showAsDropDown" />
+
+            <Button
+                android:id="@+id/btn_popup_at_location_show"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:text="showAtLocation" />
+
+            <Button
+                android:id="@+id/btn_popup_dismiss"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="dismiss PopupWindow" />
+
+        </LinearLayout>
+    </ScrollView>
+
+</LinearLayout>

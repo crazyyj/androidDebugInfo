@@ -10,6 +10,7 @@ import androidx.fragment.app.Fragment;
 import com.newchar.debug.logview.LogViewPlugin;
 import com.newchar.debugview.annotation.DebugUiContext;
 import com.newchar.debugview.DebugManager;
+import com.newcharbase.app.monitor.DebugMonitorActivity;
 
 /**
  * @author newChar
@@ -50,6 +51,27 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 showFragment(new BlueFragment());
+            }
+        });
+
+        findViewById(R.id.btn_open_appcompat_demo).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, AppCompatDialogPopupDemoActivity.class));
+            }
+        });
+
+        findViewById(R.id.btn_open_platform_fragment_demo).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, PlatformFragmentDialogPopupDemoActivity.class));
+            }
+        });
+
+        findViewById(R.id.btn_open_jvmti_monitor_demo).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, DebugMonitorActivity.class));
             }
         });
     }

@@ -129,6 +129,10 @@ public class TaskTopView extends FrameLayout {
         addChildForContext(context, childText);
     }
 
+    public void removeDialog(Context context, String childText) {
+        removeChildForContext(context, childText);
+    }
+
     public void addPopup(Context context, String childText) {
         addChildForContext(context, childText);
     }

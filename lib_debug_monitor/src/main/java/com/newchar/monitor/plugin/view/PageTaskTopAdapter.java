@@ -2,6 +2,7 @@ package com.newchar.monitor.plugin.view;
 
 
 import android.content.Context;
+import android.graphics.Color;
 import android.view.View;
 import android.widget.TextView;
 
@@ -118,6 +119,7 @@ class PageTaskTopAdapter extends EasyExpandableAdapter<String, String> {
         TextView textView = new TextView(context);
         textView.setId(VIEW_ID_BY_GROUP);
         textView.setPadding(10, 6, 10, 6);
+        textView.setTextColor(Color.GRAY);
         return textView;
     }
 
@@ -127,6 +129,7 @@ class PageTaskTopAdapter extends EasyExpandableAdapter<String, String> {
 //        textView.setHeight(ViewGroup.LayoutParams.WRAP_CONTENT);
 //        textView.setWidth(ViewGroup.LayoutParams.MATCH_PARENT);
         textView.setPadding(10, 6, 10, 6);
+        textView.setTextColor(Color.GRAY);
         return textView;
     }
 

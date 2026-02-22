@@ -1,7 +1,6 @@
 package com.newchar.monitor.toppage;
 
 import android.os.Bundle;
-import android.view.View;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -17,15 +16,24 @@ public class FragmentXWrapper {
 
 //    private final WeakReference<FragmentActivity> mActivityRef ;
     private IPageLifecycle  mPageLifecycle;
+    private FragmentActivity mHostActivity;
+    private FragmentManager.FragmentLifecycleCallbacks mFragmentLifecycleCallbacks;
 
     public FragmentXWrapper(IPageLifecycle pageLifecycle) {
         mPageLifecycle = pageLifecycle;
     }
     private void initExistFragment(List<Fragment> fragments) {
         for (Fragment f : fragments) {
+            if (f == null) {
+                continue;
+            }
             if (mPageLifecycle != null) {
                 mPageLifecycle.onPageCreate(f.getActivity(), f.hashCode(), f.getClass());
-                mPageLifecycle.onPageVisible(f.getActivity(), f.hashCode(), f.getClass());
+                if (f.isResumed() && !f.isHidden()) {
+                    mPageLifecycle.onPageVisible(f.getActivity(), f.hashCode(), f.getClass());
+                } else {
+                    mPageLifecycle.onPageGone(f.getActivity(), f.hashCode(), f.getClass());
+                }
             }
         }
 
@@ -34,8 +42,13 @@ public class FragmentXWrapper {
     //
     public void setFragmentLifeCycle(Object fragmentActivity) {
         if (fragmentActivity instanceof FragmentActivity) {
-            ((FragmentActivity) fragmentActivity).getSupportFragmentManager()
-            .registerFragmentLifecycleCallbacks(new FragmentManager.FragmentLifecycleCallbacks() {
+            FragmentActivity hostActivity = (FragmentActivity) fragmentActivity;
+            if (mHostActivity == hostActivity && mFragmentLifecycleCallbacks != null) {
+                return;
+            }
+            release();
+            FragmentManager supportFragmentManager = hostActivity.getSupportFragmentManager();
+            mFragmentLifecycleCallbacks = new FragmentManager.FragmentLifecycleCallbacks() {
 
                 @Override
                 public void onFragmentCreated(@NonNull FragmentManager fm, @NonNull Fragment f, @Nullable Bundle savedInstanceState) {
@@ -47,16 +60,16 @@ public class FragmentXWrapper {
                 }
 
                 @Override
-                public void onFragmentViewCreated(@NonNull FragmentManager fm, @NonNull Fragment f, @NonNull View v, @Nullable Bundle savedInstanceState) {
-                    super.onFragmentViewCreated(fm, f, v, savedInstanceState);
+                public void onFragmentResumed(@NonNull FragmentManager fm, @NonNull Fragment f) {
+                    super.onFragmentResumed(fm, f);
                     if (mPageLifecycle != null) {
                         mPageLifecycle.onPageVisible(f.getActivity(), f.hashCode(), f.getClass());
                     }
                 }
 
                 @Override
-                public void onFragmentViewDestroyed(@NonNull FragmentManager fm, @NonNull Fragment f) {
-                    super.onFragmentViewDestroyed(fm, f);
+                public void onFragmentStopped(@NonNull FragmentManager fm, @NonNull Fragment f) {
+                    super.onFragmentStopped(fm, f);
                     if (mPageLifecycle != null) {
                         mPageLifecycle.onPageGone(f.getActivity(), f.hashCode(), f.getClass());
                     }
@@ -69,12 +82,23 @@ public class FragmentXWrapper {
                         mPageLifecycle.onPageDestroy(f.getActivity(), f.hashCode(), f.getClass());
                     }
                 }
-            }, true);
-            List<Fragment> fragments = ((FragmentActivity) fragmentActivity).getSupportFragmentManager().getFragments();
+            };
+            supportFragmentManager.registerFragmentLifecycleCallbacks(mFragmentLifecycleCallbacks, true);
+            mHostActivity = hostActivity;
+            List<Fragment> fragments = supportFragmentManager.getFragments();
             initExistFragment(fragments);
         } else {
 //            mActivityRef = new WeakReference<>(null);
         }
+    }
+
+    public void release() {
+        if (mHostActivity != null && mFragmentLifecycleCallbacks != null) {
+            mHostActivity.getSupportFragmentManager()
+                    .unregisterFragmentLifecycleCallbacks(mFragmentLifecycleCallbacks);
+        }
+        mFragmentLifecycleCallbacks = null;
+        mHostActivity = null;
     }
 //
 //    private void createLifecycleCallback() {

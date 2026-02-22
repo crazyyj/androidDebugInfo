@@ -32,13 +32,35 @@
         android:id="@+id/btn_show_blue"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="16dp"
+        android:layout_marginBottom="8dp"
         android:text="打开蓝色页面" />
+
+    <Button
+        android:id="@+id/btn_open_appcompat_demo"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:text="打开 AppCompat 弹窗 Demo" />
+
+    <Button
+        android:id="@+id/btn_open_platform_fragment_demo"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:text="打开 平台Fragment 弹窗 Demo" />
+
+    <Button
+        android:id="@+id/btn_open_jvmti_monitor_demo"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:text="打开 JVMTI 监控 Demo" />
 
     <FrameLayout
         android:id="@+id/fragment_container"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1" />
+        android:layout_weight="1"
+        android:background="#4D808080" />
 
 </LinearLayout>
