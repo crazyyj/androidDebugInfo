@@ -3,7 +3,7 @@
 /local.properties
 /.build
 /.cxx
-/.idea/*
+/.idea
 .DS_Store
 /build
 /captures
