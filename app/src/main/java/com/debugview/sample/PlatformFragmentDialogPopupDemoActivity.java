@@ -77,25 +77,18 @@ public class PlatformFragmentDialogPopupDemoActivity extends Activity {
 
     public void showBasicDialog(String source) {
         dismissCurrentDialog();
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(source + " 基础提示")
-                .setMessage("这是平台 Fragment 页面里的 AlertDialog。")
-                .setPositiveButton("确定", null)
-                .setNegativeButton("取消", null)
-                .create();
+        AlertDialog dialog = DemoAlertDialog.createBasic(
+                this,
+                source + " 基础提示",
+                "这是平台 Fragment 页面里的 AlertDialog。"
+        );
         showDialog(dialog);
     }
 
     public void showSingleChoiceDialog(String source) {
         dismissCurrentDialog();
         String[] items = new String[]{"One", "Two", "Three", "Four"};
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(source + " 单选")
-                .setSingleChoiceItems(items, 0, (d, which) -> {
-                })
-                .setPositiveButton("确定", null)
-                .setNegativeButton("取消", null)
-                .create();
+        AlertDialog dialog = DemoAlertDialog.createSingleChoice(this, source + " 单选", items, 0);
         showDialog(dialog);
     }
 
@@ -103,25 +96,14 @@ public class PlatformFragmentDialogPopupDemoActivity extends Activity {
         dismissCurrentDialog();
         String[] items = new String[]{"A", "B", "C", "D"};
         boolean[] checked = new boolean[]{false, true, false, true};
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(source + " 多选")
-                .setMultiChoiceItems(items, checked, (d, which, isChecked) -> {
-                })
-                .setPositiveButton("确定", null)
-                .setNegativeButton("取消", null)
-                .create();
+        AlertDialog dialog = DemoAlertDialog.createMultiChoice(this, source + " 多选", items, checked);
         showDialog(dialog);
     }
 
     public void showListDialog(String source) {
         dismissCurrentDialog();
         String[] items = new String[]{"列表 A", "列表 B", "列表 C", "列表 D"};
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(source + " 列表")
-                .setItems(items, (d, which) -> {
-                })
-                .setNegativeButton("关闭", null)
-                .create();
+        AlertDialog dialog = DemoAlertDialog.createList(this, source + " 列表", items, "关闭");
         showDialog(dialog);
     }
 
@@ -131,10 +113,7 @@ public class PlatformFragmentDialogPopupDemoActivity extends Activity {
         TextView title = customView.findViewById(R.id.tv_popup_title);
         Button close = customView.findViewById(R.id.btn_popup_inner_dismiss);
         title.setText(source + " 自定义 AlertDialog");
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("自定义")
-                .setView(customView)
-                .create();
+        AlertDialog dialog = DemoAlertDialog.createCustom(this, "自定义", customView);
         close.setText("关闭 Dialog");
         close.setOnClickListener(v -> dialog.dismiss());
         showDialog(dialog);

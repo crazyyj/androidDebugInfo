@@ -352,8 +352,15 @@ static bool resolveReceiverRuntimeClass(jvmtiEnv* jvmti,
     }
 
     jobject receiver = nullptr;
-    if (jvmti->GetLocalObject(thread, 0, 0, &receiver) != JVMTI_ERROR_NONE || receiver == nullptr) {
-        return false;
+    jvmtiError localInstanceErr = jvmti->GetLocalInstance(thread, 0, &receiver);
+    if (localInstanceErr != JVMTI_ERROR_NONE || receiver == nullptr) {
+        if (receiver != nullptr) {
+            env->DeleteLocalRef(receiver);
+            receiver = nullptr;
+        }
+        if (jvmti->GetLocalObject(thread, 0, 0, &receiver) != JVMTI_ERROR_NONE || receiver == nullptr) {
+            return false;
+        }
     }
     jclass receiverClass = env->GetObjectClass(receiver);
     env->DeleteLocalRef(receiver);

@@ -402,12 +402,46 @@ public final class DebugStackMotion {
      * @return 方法
      */
     private static Method findMethod(Class<?> clazz, String methodName, String methodDesc) {
-        for (Method m : clazz.getDeclaredMethods()) {
-            if (m.getName().equals(methodName) && methodDesc != null) {
+        Class<?> current = clazz;
+        while (current != null) {
+            for (Method m : current.getDeclaredMethods()) {
+                if (!m.getName().equals(methodName) || methodDesc == null) {
+                    continue;
+                }
                 String desc = getMethodDescriptor(m);
                 if (desc.equals(methodDesc)) {
                     return m;
                 }
+            }
+            Method interfaceMethod = findMethodInInterfaces(current.getInterfaces(), methodName, methodDesc);
+            if (interfaceMethod != null) {
+                return interfaceMethod;
+            }
+            current = current.getSuperclass();
+        }
+        return null;
+    }
+
+    private static Method findMethodInInterfaces(Class<?>[] interfaces, String methodName, String methodDesc) {
+        if (interfaces == null || interfaces.length == 0) {
+            return null;
+        }
+        for (Class<?> interfaceClass : interfaces) {
+            if (interfaceClass == null) {
+                continue;
+            }
+            for (Method m : interfaceClass.getDeclaredMethods()) {
+                if (!m.getName().equals(methodName) || methodDesc == null) {
+                    continue;
+                }
+                String desc = getMethodDescriptor(m);
+                if (desc.equals(methodDesc)) {
+                    return m;
+                }
+            }
+            Method nested = findMethodInInterfaces(interfaceClass.getInterfaces(), methodName, methodDesc);
+            if (nested != null) {
+                return nested;
             }
         }
         return null;

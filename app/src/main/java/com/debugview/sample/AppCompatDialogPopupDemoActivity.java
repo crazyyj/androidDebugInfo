@@ -55,25 +55,18 @@ public class AppCompatDialogPopupDemoActivity extends AppCompatActivity {
 
     private void showBasicDialog() {
         dismissCurrentDialog();
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("基础提示")
-                .setMessage("这是 AppCompat 页面中的基础 AlertDialog。")
-                .setPositiveButton("确定", null)
-                .setNegativeButton("取消", null)
-                .create();
+        AlertDialog dialog = DemoAlertDialog.createBasic(
+                this,
+                "基础提示",
+                "这是 AppCompat 页面中的基础 AlertDialog。"
+        );
         showDialog(dialog);
     }
 
     private void showSingleChoiceDialog() {
         dismissCurrentDialog();
         String[] items = new String[]{"Alpha", "Beta", "Gamma", "Delta"};
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("单选")
-                .setSingleChoiceItems(items, 1, (d, which) -> {
-                })
-                .setPositiveButton("确定", null)
-                .setNegativeButton("取消", null)
-                .create();
+        AlertDialog dialog = DemoAlertDialog.createSingleChoice(this, "单选", items, 1);
         showDialog(dialog);
     }
 
@@ -81,25 +74,14 @@ public class AppCompatDialogPopupDemoActivity extends AppCompatActivity {
         dismissCurrentDialog();
         String[] items = new String[]{"缓存", "网络", "磁盘", "传感器"};
         boolean[] checked = new boolean[]{true, false, false, true};
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("多选")
-                .setMultiChoiceItems(items, checked, (d, which, isChecked) -> {
-                })
-                .setPositiveButton("确定", null)
-                .setNegativeButton("取消", null)
-                .create();
+        AlertDialog dialog = DemoAlertDialog.createMultiChoice(this, "多选", items, checked);
         showDialog(dialog);
     }
 
     private void showListDialog() {
         dismissCurrentDialog();
         String[] items = new String[]{"列表项 1", "列表项 2", "列表项 3", "列表项 4"};
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("列表")
-                .setItems(items, (d, which) -> {
-                })
-                .setNegativeButton("关闭", null)
-                .create();
+        AlertDialog dialog = DemoAlertDialog.createList(this, "列表", items, "关闭");
         showDialog(dialog);
     }
 
@@ -109,10 +91,7 @@ public class AppCompatDialogPopupDemoActivity extends AppCompatActivity {
         TextView title = customView.findViewById(R.id.tv_popup_title);
         Button close = customView.findViewById(R.id.btn_popup_inner_dismiss);
         title.setText("自定义 AlertDialog");
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("自定义")
-                .setView(customView)
-                .create();
+        AlertDialog dialog = DemoAlertDialog.createCustom(this, "自定义", customView);
         close.setText("关闭 Dialog");
         close.setOnClickListener(v -> dialog.dismiss());
         showDialog(dialog);

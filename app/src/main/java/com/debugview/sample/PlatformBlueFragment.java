@@ -48,12 +48,11 @@ public class PlatformBlueFragment extends Fragment {
             return;
         }
         dismissCurrentDialog();
-        AlertDialog dialog = new AlertDialog.Builder(getActivity())
-                .setTitle("Blue Fragment Dialog")
-                .setMessage("来自 PlatformBlueFragment 的 AlertDialog")
-                .setPositiveButton("确定", null)
-                .setNegativeButton("取消", null)
-                .create();
+        AlertDialog dialog = DemoAlertDialog.createBasic(
+                getActivity(),
+                "Blue Fragment Dialog",
+                "来自 PlatformBlueFragment 的 AlertDialog"
+        );
         mCurrentDialog = dialog;
         dialog.setOnDismissListener(d -> {
             if (mCurrentDialog == dialog) {

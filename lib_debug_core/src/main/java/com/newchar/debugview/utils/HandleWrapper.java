@@ -3,7 +3,11 @@ package com.newchar.debugview.utils;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
+import android.os.MessageQueue;
 import android.os.Process;
+import android.util.Log;
+
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * @author newChar
@@ -16,19 +20,34 @@ public class HandleWrapper {
     private static HandlerThread mThread1 = new HandlerThread("default_HandlerThread", Process.THREAD_PRIORITY_DEFAULT);
     private static HandlerThread mThread2 = new HandlerThread("bg_HandlerThread", Process.THREAD_PRIORITY_BACKGROUND);
     private static final Handler mMainThread = new Handler(Looper.getMainLooper()/*, (message) -> { return false }*/);
-    private static volatile int mThreadSelector = 1;
+    private static final AtomicInteger mThreadSelector = new AtomicInteger(1);
 
     public static Handler getMainHandler() {
         return mMainThread;
     }
 
-    public static Handler getThreadHandler(Handler.Callback callback) {
+    /**
+     * 返回一个临时异步 Handler，适用于轻量、无结果回传的短任务。
+     */
+    public static Handler obtainAsyncHandler(Handler.Callback callback) {
         HandlerThread temp = getAliveThread();
         return new Handler(temp.getLooper(), callback);
     }
 
+    public static void execUIIdleOnce(Runnable r){
+        Looper.getMainLooper().getQueue()
+                .addIdleHandler(() -> {
+                    try {
+                        r.run();
+                    } catch (Exception e) {
+                        Log.e("Handle", "execUIIdleOnce", e);
+                    }
+                    return false;
+                });
+    }
+
     private static HandlerThread getAliveThread() {
-        final int selector = mThreadSelector;
+        final int selector = mThreadSelector.getAndIncrement();
         // 偶数 -> thread2；奇数 -> thread1
         if ((selector & 1) == 1) {
             mThread1 = ensureThreadAlive(mThread1, "default_HandlerThread", Process.THREAD_PRIORITY_DEFAULT);

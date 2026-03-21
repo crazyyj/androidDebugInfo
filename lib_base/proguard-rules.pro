@@ -15,3 +15,10 @@
 #-keepclassmembers class fqcn.of.javascript.interface.for.webview {
 #   public *;
 #}
+
+# `lib_base` 提供给多个上层模块直接使用，库级混淆时需要保住跨模块 API。
+-keep class com.newchar.debug.common.adapter.** { *; }
+-keep class com.newchar.debug.common.helper.ApplicationCompat { *; }
+-keep class com.newchar.debug.common.utils.Prompt { *; }
+-keep class com.newchar.debug.common.utils.UIUtils { *; }
+-keep class com.newchar.debug.common.utils.ViewUtils { *; }

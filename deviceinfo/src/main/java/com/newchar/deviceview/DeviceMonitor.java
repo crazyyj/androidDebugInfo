@@ -130,14 +130,7 @@ public class DeviceMonitor {
         }
 
         private void buildDevicesInfo() {
-            DevicesInfo tempInfo = DevicesInfo.getInstance();
-            tempInfo.setBoard(DebugUtils.getDeviceBoard());
-            tempInfo.setHardware(DebugUtils.getDeviceHardwareName());
-            tempInfo.setAndroidVersion(DebugUtils.getDeviceAndroidVersion());
-            tempInfo.setSDKVersion(DebugUtils.getDeviceSDK());
-            tempInfo.setModel(DebugUtils.getDeviceModel());
-            tempInfo.setBrand(DebugUtils.getDeviceBrand());
-
+            DeviceStaticInfoCollector.collect(DebugUtils.app());
             callbackDevicesInfo();
         }
 
