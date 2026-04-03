@@ -31,6 +31,7 @@ public class DevicesInfoPlugin extends ScreenDisplayPlugin {
         Context context = pluginContainerView.getContext();
         if (mContainerView == null) {
             mContainerView = new ScrollView(context);
+            mContainerView.setBackgroundColor(0x4D808080);
             mInfoView = new TextView(context);
             mInfoView.setTextColor(Color.DKGRAY);
             mInfoView.setPadding(24, 20, 24, 20);

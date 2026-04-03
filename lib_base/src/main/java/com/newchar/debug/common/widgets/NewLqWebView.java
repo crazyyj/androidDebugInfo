@@ -6,6 +6,9 @@ import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.webkit.WebView;
 
+import com.newchar.debug.common.utils.UIUtils;
+import com.newchar.debug.common.utils.ViewUtils;
+
 /**
  * Created by newlq on 2017/2/8.
  */
@@ -27,10 +30,7 @@ public class NewLqWebView extends WebView {
 
     @Override
     public void destroy() {
-        ViewParent parent = getParent();
-        if (parent instanceof ViewGroup) {
-            ((ViewGroup) parent).removeView(this);
-        }
+        ViewUtils.removeSelf(this);
         super.destroy();
     }
 

@@ -1,4 +1,4 @@
-package com.newchar.debug.common.base;
+package com.newchar.debug.common.helper;
 
 import android.content.Context;
 import android.content.pm.PackageInfo;

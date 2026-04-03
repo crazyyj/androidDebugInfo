@@ -74,8 +74,8 @@ public class PackageUtil {
      * @return
      * @see PackageManager#FEATURE_CAMERA  特性常量
      */
-    public static boolean hardwareEnable(String isHasFeature) {
-        return UIUtils.getContext().getPackageManager().hasSystemFeature(isHasFeature);
+    public static boolean hardwareEnable(String feature) {
+        return UIUtils.getContext().getPackageManager().hasSystemFeature(feature);
     }
 
     /**

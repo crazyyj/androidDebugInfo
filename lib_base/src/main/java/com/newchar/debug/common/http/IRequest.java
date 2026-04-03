@@ -19,7 +19,7 @@ public interface IRequest {
 
     void get(String url);
 
-    void otherRquest(int otherMethod, String url, Map<String, String> pmaram);
+    void otherRequest(int otherMethod, String url, Map<String, String> pmaram);
 
 
 }
