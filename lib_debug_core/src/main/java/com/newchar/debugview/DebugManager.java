@@ -110,6 +110,7 @@ public class DebugManager {
                     registerOptionalPlugin("com.newchar.debug.logview.LogViewPlugin");
                     registerOptionalPlugin("com.newchar.monitor.plugin.PageTaskTopPlugin");
                     registerOptionalPlugin("com.newchar.monitor.plugin.MethodFieldMonitorPlugin");
+                    registerOptionalPlugin("com.newchar.touchrestore.TouchRestorePlugin");
                     registerOptionalPlugin("com.newchar.deviceview.DevicesInfoPlugin");
                 }
 

@@ -46,6 +46,7 @@ dependencies {
     implementation project(':lib_debug_monitor')
     implementation project(':lib_logview')
     implementation project(':deviceinfo')
+    implementation project(':lib_touch_restore')
 
     implementation 'androidx.appcompat:appcompat:1.6.1'
 }
