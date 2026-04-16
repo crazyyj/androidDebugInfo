@@ -766,7 +766,7 @@ JNIEXPORT jint JNICALL Agent_OnAttach(JavaVM* vm, char* /*options*/, void* /*res
 
 // JNI 方法实现
 extern "C" JNIEXPORT void JNICALL
-Java_com_newchar_monitor_jvmti_DebugStackMotion_registerMethodNative(JNIEnv* env, jclass /*clazz*/,
+Java_com_newchar_debug_monitor_jvmti_DebugStackMotion_registerMethodNative(JNIEnv* env, jclass /*clazz*/,
                                                                 jclass baseClass, jobject methodObj,
                                                                 jboolean includeSubclasses) {
     if (baseClass == nullptr || methodObj == nullptr || g_jvmti == nullptr) {
@@ -840,12 +840,12 @@ Java_com_newchar_monitor_jvmti_DebugStackMotion_registerMethodNative(JNIEnv* env
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_newchar_monitor_jvmti_DebugStackMotion_clearRegisteredMethodsNative(JNIEnv* env, jclass /*clazz*/) {
+Java_com_newchar_debug_monitor_jvmti_DebugStackMotion_clearRegisteredMethodsNative(JNIEnv* env, jclass /*clazz*/) {
     releaseInterestedMethods(env);
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_newchar_monitor_jvmti_DebugStackMotion_registerFieldNative(
+Java_com_newchar_debug_monitor_jvmti_DebugStackMotion_registerFieldNative(
         JNIEnv* env, jclass /*clazz*/, jclass ownerClass, jobject fieldObj) {
     if (env == nullptr || ownerClass == nullptr || fieldObj == nullptr || g_jvmti == nullptr) {
         return;
@@ -880,12 +880,12 @@ Java_com_newchar_monitor_jvmti_DebugStackMotion_registerFieldNative(
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_newchar_monitor_jvmti_DebugStackMotion_clearRegisteredFieldsNative(JNIEnv* env, jclass /*clazz*/) {
+Java_com_newchar_debug_monitor_jvmti_DebugStackMotion_clearRegisteredFieldsNative(JNIEnv* env, jclass /*clazz*/) {
     releaseWatchedFields(env);
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_newchar_monitor_jvmti_DebugStackMotion_prepareCallbackBridgeNative(
+Java_com_newchar_debug_monitor_jvmti_DebugStackMotion_prepareCallbackBridgeNative(
         JNIEnv* env, jclass /*clazz*/, jclass bridgeClass) {
     if (!cacheDebugStackMotionClass(env, bridgeClass)) {
         LOGE("prepareCallbackBridgeNative failed");
@@ -893,7 +893,7 @@ Java_com_newchar_monitor_jvmti_DebugStackMotion_prepareCallbackBridgeNative(
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_newchar_monitor_jvmti_DebugStackMotion_setFieldModificationEnabledNative(
+Java_com_newchar_debug_monitor_jvmti_DebugStackMotion_setFieldModificationEnabledNative(
         JNIEnv* /*env*/, jclass /*clazz*/, jboolean enabled) {
     const bool targetEnabled = enabled == JNI_TRUE;
     g_fieldModificationEnabled.store(targetEnabled, std::memory_order_relaxed);
@@ -901,7 +901,7 @@ Java_com_newchar_monitor_jvmti_DebugStackMotion_setFieldModificationEnabledNativ
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_newchar_monitor_jvmti_DebugStackMotionAgent_startAgentNative(JNIEnv* /*env*/, jclass /*clazz*/) {
+Java_com_newchar_debug_monitor_jvmti_DebugStackMotionAgent_startAgentNative(JNIEnv* /*env*/, jclass /*clazz*/) {
     g_releaseInProgress.store(false, std::memory_order_relaxed);
     if (g_jvmti == nullptr) {
         LOGE("startAgentNative ignored: JVMTI env is null");
@@ -917,7 +917,7 @@ Java_com_newchar_monitor_jvmti_DebugStackMotionAgent_startAgentNative(JNIEnv* /*
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_newchar_monitor_jvmti_DebugStackMotionAgent_stopAgentNative(JNIEnv* /*env*/, jclass /*clazz*/) {
+Java_com_newchar_debug_monitor_jvmti_DebugStackMotionAgent_stopAgentNative(JNIEnv* /*env*/, jclass /*clazz*/) {
     if (g_jvmti != nullptr) {
         g_jvmti->SetEventNotificationMode(JVMTI_DISABLE, JVMTI_EVENT_METHOD_ENTRY, nullptr);
         g_jvmti->SetEventNotificationMode(JVMTI_DISABLE, JVMTI_EVENT_FIELD_MODIFICATION, nullptr);
@@ -927,7 +927,7 @@ Java_com_newchar_monitor_jvmti_DebugStackMotionAgent_stopAgentNative(JNIEnv* /*e
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_newchar_monitor_jvmti_DebugStackMotion_releaseNative(JNIEnv* env, jclass /*clazz*/) {
+Java_com_newchar_debug_monitor_jvmti_DebugStackMotion_releaseNative(JNIEnv* env, jclass /*clazz*/) {
     g_releaseInProgress.store(true, std::memory_order_relaxed);
     disableJvmtiEvents();
     stopConsumerThread();

@@ -5,7 +5,8 @@ include ':lib_debug_core'
 include ':lib_base'
 
 // 扩展图
-include ':lib_logview'
-include ':deviceinfo'
-include ':lib_touch_restore'
+include ':lib_debug_log'
+include ':lib_debug_device'
+include ':lib_debug_touch'
 include ':lib_debug_monitor'
+include ':lib_debug_net'

@@ -1,0 +1,3 @@
+-keep class com.newchar.debug.net.** { *; }
+-dontwarn com.newchar.debug.**
+-dontwarn com.newchar.debug.common.**

@@ -13,6 +13,7 @@ android {
 
         versionCode 1
         versionName "1.0"
+        resourceConfigurations += ['en', 'zh']
 //        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
 
         ndk {
@@ -23,12 +24,13 @@ android {
     buildTypes {
         release {
             minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
 
         debug {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            minifyEnabled true
+            shrinkResources true
         }
     }
     compileOptions {
@@ -44,9 +46,10 @@ dependencies {
     implementation project(':lib_base')
     implementation project(':lib_debug_core')
     implementation project(':lib_debug_monitor')
-    implementation project(':lib_logview')
-    implementation project(':deviceinfo')
-    implementation project(':lib_touch_restore')
+    implementation project(':lib_debug_log')
+    implementation project(':lib_debug_device')
+    implementation project(':lib_debug_touch')
+    implementation project(':lib_debug_net')
 
     implementation 'androidx.appcompat:appcompat:1.6.1'
 }

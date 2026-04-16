@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace 'com.newchar.debugview'
+    namespace 'com.newchar.debug.core'
     compileSdk rootProject.ext.compileSdkVersion
 
     defaultConfig {

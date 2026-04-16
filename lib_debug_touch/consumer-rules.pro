@@ -1,0 +1,3 @@
+-keep class com.newchar.debug.touch.** { *; }
+-dontwarn com.newchar.debug.**
+-dontwarn com.newchar.debug.common.**

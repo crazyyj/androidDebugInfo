@@ -9,18 +9,18 @@
     <application>
 
         <activity
-            android:name="com.newchar.debugview.DebugPanelActivity"
+            android:name="com.newchar.debug.DebugPanelActivity"
             android:enabled="true"
             android:exported="false" />
 
         <service
-            android:name="com.newchar.debugview.FloatViewService"
+            android:name="com.newchar.debug.FloatViewService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
         <provider
-            android:name="com.newchar.debugview.init.InitContainer"
+            android:name="com.newchar.debug.init.InitContainer"
             android:authorities="com.newchar.InitContainer"
             android:enabled="true"
             android:exported="false" />

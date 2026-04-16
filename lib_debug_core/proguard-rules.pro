@@ -27,9 +27,9 @@
 -dontwarn com.newchar.debug.common.utils.ViewUtils
 
 # `lib_debug_core` 也是其他模块的直接 API 依赖，库级混淆不能裁掉这些公开类型。
--keep class com.newchar.debugview.DebugManager { *; }
--keep class com.newchar.debugview.annotation.** { *; }
--keep class com.newchar.debugview.api.** { *; }
--keep class com.newchar.debugview.lifecycle.** { *; }
--keep class com.newchar.debugview.utils.DebugUtils { *; }
--keep class com.newchar.debugview.utils.HandleWrapper { *; }
+-keep class com.newchar.debug.DebugManager { *; }
+-keep class com.newchar.debug.annotation.** { *; }
+-keep class com.newchar.debug.api.** { *; }
+-keep class com.newchar.debug.lifecycle.** { *; }
+-keep class com.newchar.debug.utils.DebugUtils { *; }
+-keep class com.newchar.debug.utils.HandleWrapper { *; }

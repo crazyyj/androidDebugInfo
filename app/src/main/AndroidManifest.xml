@@ -38,7 +38,7 @@
             android:label="Platform Fragment Dialog Popup Demo" />
 
         <activity
-            android:name="com.newcharbase.app.monitor.DebugMonitorActivity"
+            android:name="com.newchar.debug.monitor.DebugMonitorActivity"
             android:exported="false"
             android:label="JVMTI Monitor Demo" />
 
