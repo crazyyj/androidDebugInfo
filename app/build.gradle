@@ -5,10 +5,10 @@ android {
     ndkVersion rootProject.ext.ndkVersion
 
 
-    namespace 'com.debugview.sample'
+    namespace 'com.newchar.debug.sample'
 
     defaultConfig {
-        applicationId "com.debugview.sample"
+        applicationId "com.newchar.debug.sample"
         minSdk rootProject.ext.minSdkVersion
 
         versionCode 1

@@ -1,4 +1,4 @@
-package com.debugview.sample;
+package com.newchar.debug.sample;
 
 import android.app.Activity;
 import android.app.AlertDialog;

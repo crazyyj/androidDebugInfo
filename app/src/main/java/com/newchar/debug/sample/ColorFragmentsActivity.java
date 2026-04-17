@@ -1,4 +1,4 @@
-package com.debugview.sample;
+package com.newchar.debug.sample;
 
 import android.os.Bundle;
 import android.view.ViewGroup;
