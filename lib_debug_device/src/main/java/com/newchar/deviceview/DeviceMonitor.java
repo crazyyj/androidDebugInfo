@@ -1,12 +1,11 @@
 package com.newchar.deviceview;
 
 import android.os.Handler;
-import android.os.HandlerThread;
-import android.os.Looper;
 import android.os.Message;
 import android.view.Choreographer;
 
 import com.newchar.debug.utils.DebugUtils;
+import com.newchar.debug.utils.HandleWrapper;
 import com.newchar.deviceview.bean.CPUInfo;
 import com.newchar.deviceview.bean.DevicesInfo;
 import com.newchar.deviceview.bean.MemoryInfo;
@@ -33,11 +32,11 @@ public class DeviceMonitor {
     private static final int MSG_UPDATE_DEVICES_INFO = 6;
     private static final int MSG_STOP_UPDATE_FRAME_RATE = 7;
 
-    private HandlerThread mGlobalThread;
     private Handler mDevicesMonitorHandler;
     private Handler mDevicesHandler;
     private DevicesInfoCallback mDevicesInfoCallback;
     private TrafficMonitor mTrafficMonitor;
+    private boolean mFrameRateRunning;
 
     private static volatile DeviceMonitor mDeviceMonitor;
 
@@ -59,29 +58,25 @@ public class DeviceMonitor {
             switch (msg.what) {
                 case MSG_UPDATE_CPU:
                     buildCPUInfo();
-                    mDevicesMonitorHandler.sendEmptyMessageDelayed(MSG_UPDATE_CPU, 1000L);
+                    sendMonitorMessageDelayed(MSG_UPDATE_CPU, 1000L);
                     break;
                 case MSG_UPDATE_TRAFFIC:
                     buildTrafficInfo();
-                    mDevicesMonitorHandler.sendEmptyMessageDelayed(MSG_UPDATE_TRAFFIC, 1000L);
+                    sendMonitorMessageDelayed(MSG_UPDATE_TRAFFIC, 1000L);
                     break;
                 case MSG_UPDATE_MEMORY:
                     buildMemoryInfo();
-                    mDevicesMonitorHandler.sendEmptyMessageDelayed(MSG_UPDATE_MEMORY, 1000L);
+                    sendMonitorMessageDelayed(MSG_UPDATE_MEMORY, 1000L);
                     break;
                 case MSG_UPDATE_STORAGE:
                     buildStorageInfo();
-                    mDevicesMonitorHandler.sendEmptyMessageDelayed(MSG_UPDATE_STORAGE, 1000L);
+                    sendMonitorMessageDelayed(MSG_UPDATE_STORAGE, 1000L);
                     break;
                 case MSG_UPDATE_FRAME_RATE:
-                    // UI 线程为主线程。
-                    Choreographer.getInstance().postFrameCallback(mFrameCallback);
+                    postStartFrameRate();
                     break;
                 case MSG_STOP_UPDATE_FRAME_RATE:
-                    if (mDevicesHandler.hasMessages(MSG_UPDATE_FRAME_RATE)) {
-                        mDevicesHandler.removeMessages(MSG_UPDATE_FRAME_RATE);
-                    }
-                    Choreographer.getInstance().removeFrameCallback(mFrameCallback);
+                    postStopFrameRate();
                     break;
                 case MSG_UPDATE_DEVICES_INFO:
                     buildDevicesInfo();
@@ -94,31 +89,31 @@ public class DeviceMonitor {
 
         private void callbackCpuInfo() {
             if (mDevicesInfoCallback != null) {
-                mDevicesInfoCallback.onCPUInfoCallback(CPUInfo.getInstance());
+                postUiCallback(() -> mDevicesInfoCallback.onCPUInfoCallback(CPUInfo.getInstance()));
             }
         }
 
         private void callbackStorageInfo() {
             if (mDevicesInfoCallback != null) {
-                mDevicesInfoCallback.onStorageCallback(StorageInfo.getInstance());
+                postUiCallback(() -> mDevicesInfoCallback.onStorageCallback(StorageInfo.getInstance()));
             }
         }
 
         private void callbackMemoryInfo() {
             if (mDevicesInfoCallback != null) {
-                mDevicesInfoCallback.onMemoryCallback(MemoryInfo.getInstance());
+                postUiCallback(() -> mDevicesInfoCallback.onMemoryCallback(MemoryInfo.getInstance()));
             }
         }
 
         private void callbackDevicesInfo() {
             if (mDevicesInfoCallback != null) {
-                mDevicesInfoCallback.onDevicesInfoCallback(DevicesInfo.getInstance());
+                postUiCallback(() -> mDevicesInfoCallback.onDevicesInfoCallback(DevicesInfo.getInstance()));
             }
         }
 
         private void callbackTrafficInfo(TrafficInfo info) {
             if (mDevicesInfoCallback != null && info != null) {
-                mDevicesInfoCallback.onTrafficUpdate(info);
+                postUiCallback(() -> mDevicesInfoCallback.onTrafficUpdate(info));
             }
         }
 
@@ -164,19 +159,23 @@ public class DeviceMonitor {
     };
 
     private DeviceMonitor() {
-        if (mGlobalThread == null) {
-            mGlobalThread = new HandlerThread("device_global_thread");
-            mGlobalThread.start();
-        }
-        mDevicesMonitorHandler = new Handler(mGlobalThread.getLooper(), mCallback);
-        mDevicesHandler = new Handler(Looper.getMainLooper(), mCallback);
+        mDevicesMonitorHandler = HandleWrapper.obtainAsyncHandler(mCallback);
+        mDevicesHandler = HandleWrapper.getMainHandler();
         mTrafficMonitor = new TrafficMonitor(DebugUtils.app());
     }
 
+    /**
+     * 设置设备信息回调。
+     *
+     * @param callback 设备信息回调
+     */
     public void setDevicesInfoCallback(DevicesInfoCallback callback) {
         this.mDevicesInfoCallback = callback;
     }
 
+    /**
+     * 更新全部设备监控信息。
+     */
     public void updateAllInfo() {
         updateCPUInfo();
         updateMemoryInfo();
@@ -198,42 +197,125 @@ public class DeviceMonitor {
      * 更新CPU信息
      */
     public void updateCPUInfo() {
-        mDevicesMonitorHandler.sendEmptyMessage(MSG_UPDATE_CPU);
+        sendMonitorMessage(MSG_UPDATE_CPU);
     }
 
     /**
      * 更新主线程帧率信息
      */
     public void updateFrameRateInfo() {
-        mDevicesHandler.sendEmptyMessage(MSG_UPDATE_FRAME_RATE);
+        postStartFrameRate();
     }
 
     /**
      * 更新内存信息
      */
     public void updateMemoryInfo() {
-        mDevicesMonitorHandler.sendEmptyMessage(MSG_UPDATE_MEMORY);
+        sendMonitorMessage(MSG_UPDATE_MEMORY);
     }
 
     /**
      * 更新设备存储信息
      */
     public void updateStorageInfo() {
-        mDevicesMonitorHandler.sendEmptyMessage(MSG_UPDATE_STORAGE);
+        sendMonitorMessage(MSG_UPDATE_STORAGE);
     }
 
     /**
      * 更新设备信息, 手机型号。cpu型号。等。
      */
     public void updateDevicesInfo() {
-        mDevicesMonitorHandler.sendEmptyMessage(MSG_UPDATE_DEVICES_INFO);
+        sendMonitorMessage(MSG_UPDATE_DEVICES_INFO);
     }
 
     /**
      * 更新网络流量信息
      */
     public void updateTrafficInfo() {
-        mDevicesMonitorHandler.sendEmptyMessage(MSG_UPDATE_TRAFFIC);
+        sendMonitorMessage(MSG_UPDATE_TRAFFIC);
+    }
+
+    /**
+     * 发送工作线程采样消息。
+     *
+     * @param what 消息类型
+     */
+    private void sendMonitorMessage(int what) {
+        if (mDevicesMonitorHandler == null || mDevicesMonitorHandler.hasMessages(what)) {
+            return;
+        }
+        mDevicesMonitorHandler.sendEmptyMessage(what);
+    }
+
+    /**
+     * 延迟发送工作线程采样消息。
+     *
+     * @param what        消息类型
+     * @param delayMillis 延迟时间
+     */
+    private void sendMonitorMessageDelayed(int what, long delayMillis) {
+        if (mDevicesMonitorHandler == null || mDevicesMonitorHandler.hasMessages(what)) {
+            return;
+        }
+        mDevicesMonitorHandler.sendEmptyMessageDelayed(what, delayMillis);
+    }
+
+    /**
+     * 投递 UI 回调。
+     *
+     * @param runnable UI 回调任务
+     */
+    private void postUiCallback(Runnable runnable) {
+        if (mDevicesHandler == null || runnable == null) {
+            return;
+        }
+        mDevicesHandler.post(() -> {
+            if (mDevicesInfoCallback != null) {
+                runnable.run();
+            }
+        });
+    }
+
+    /**
+     * 在 UI 线程启动帧率采样。
+     */
+    private void postStartFrameRate() {
+        if (mDevicesHandler == null) {
+            return;
+        }
+        mDevicesHandler.post(this::startFrameRateOnUiThread);
+    }
+
+    /**
+     * 在 UI 线程停止帧率采样。
+     */
+    private void postStopFrameRate() {
+        if (mDevicesHandler == null) {
+            return;
+        }
+        mDevicesHandler.post(this::stopFrameRateOnUiThread);
+    }
+
+    /**
+     * 启动帧率采样。
+     */
+    private void startFrameRateOnUiThread() {
+        if (mFrameRateRunning) {
+            return;
+        }
+        mFrameRateRunning = true;
+        Choreographer.getInstance().postFrameCallback(mFrameCallback);
+    }
+
+    /**
+     * 停止帧率采样。
+     */
+    private void stopFrameRateOnUiThread() {
+        if (!mFrameRateRunning) {
+            return;
+        }
+        mFrameRateRunning = false;
+        Choreographer.getInstance().removeFrameCallback(mFrameCallback);
     }
 
     /**
@@ -323,6 +405,9 @@ public class DeviceMonitor {
 
         @Override
         public void doFrame(long frameTimeNanos) {
+            if (!mFrameRateRunning) {
+                return;
+            }
             if (mLastFrameNanoTime != 0) { // mLastFrameNanoTime 上一次绘制的时间
                 long frameInterval = frameTimeNanos - mLastFrameNanoTime; // 计算两帧的时间间隔
                 // 如果时间间隔大于最小时间间隔，3*16ms，小于最大的时间间隔，60*16ms，就认为是掉帧，累加统计该时间
@@ -339,7 +424,9 @@ public class DeviceMonitor {
 //                }
             }
             mLastFrameNanoTime = frameTimeNanos;
-            Choreographer.getInstance().postFrameCallback(this);
+            if (mFrameRateRunning) {
+                Choreographer.getInstance().postFrameCallback(this);
+            }
         }
 
         private void callbackFrameUpdate(float frameInterval_ms, float frameRate) {
@@ -350,35 +437,23 @@ public class DeviceMonitor {
 
     };
 
+    /**
+     * 释放设备监控资源。
+     */
     public void release() {
         mDeviceMonitor = null;
         mDevicesInfoCallback = null;
+        postStopFrameRate();
         if (mTrafficMonitor != null) {
             mTrafficMonitor.release();
             mTrafficMonitor = null;
         }
-        releaseInternalHandlerThread();
-        mDevicesHandler.sendEmptyMessage(MSG_STOP_UPDATE_FRAME_RATE);
         if (mDevicesHandler != null) {
-            mDevicesHandler.removeCallbacksAndMessages(null);
             mDevicesHandler = null;
         }
         if (mDevicesMonitorHandler != null) {
             mDevicesMonitorHandler.removeCallbacksAndMessages(null);
             mDevicesMonitorHandler = null;
-        }
-    }
-
-    private void releaseInternalHandlerThread() {
-        if (mGlobalThread != null) {
-            try {
-                HandlerThread globalThread = mGlobalThread;
-                mGlobalThread = null;
-                globalThread.quitSafely();
-                globalThread.join();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
         }
     }
 

@@ -248,18 +248,22 @@ public class DebugView extends LinearLayout {
         // 是触发事件向下传递, 还是下边提前准备好, 反向设置上来.
         // 文本样式,还是需要底部提供,以及不同插件 设置的功能 个数, 需要提前准备好, 去下层取. 以及不显示 的使用某些插件的逻辑.
         // 可以使用 简单的任务处理 做到不阻塞.更快处理. 具体 View 是否是全局数据, 使用插件内部自行实现.
-        for (Class<ScreenDisplayPlugin> screenDisplayPlugin : allPlugin) {
-            try {
-                ScreenDisplayPlugin plugin = screenDisplayPlugin.newInstance();
-                plugin.onLoad(mPluginContext, this);
-                mPagePlugin.add(plugin);
-            } catch (Exception e) {
-                e.printStackTrace();
+        for (final Class<ScreenDisplayPlugin> screenDisplayPlugin : allPlugin) {
+            post(() -> {
+                try {
+                    ScreenDisplayPlugin plugin = screenDisplayPlugin.newInstance();
+                    plugin.onLoad(mPluginContext, DebugView.this);
+                    mPagePlugin.add(plugin);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            });
+        }
+        post(() -> {
+            if (!mPagePlugin.isEmpty()) {
+                applyPlugin(mPagePlugin.get(0));
             }
-        }
-        if (!mPagePlugin.isEmpty()) {
-            applyPlugin(mPagePlugin.get(0));
-        }
+        });
     }
 
     private void unloadPlugin() {
