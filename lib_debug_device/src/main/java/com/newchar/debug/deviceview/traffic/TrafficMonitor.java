@@ -1,4 +1,4 @@
-package com.newchar.deviceview.traffic;
+package com.newchar.debug.deviceview.traffic;
 
 import android.content.Context;
 import android.net.TrafficStats;

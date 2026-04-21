@@ -1,10 +1,10 @@
-package com.newchar.deviceview;
+package com.newchar.debug.deviceview;
 
-import com.newchar.deviceview.bean.CPUInfo;
-import com.newchar.deviceview.bean.DevicesInfo;
-import com.newchar.deviceview.bean.MemoryInfo;
-import com.newchar.deviceview.bean.StorageInfo;
-import com.newchar.deviceview.traffic.TrafficInfo;
+import com.newchar.debug.deviceview.bean.CPUInfo;
+import com.newchar.debug.deviceview.bean.DevicesInfo;
+import com.newchar.debug.deviceview.bean.MemoryInfo;
+import com.newchar.debug.deviceview.bean.StorageInfo;
+import com.newchar.debug.deviceview.traffic.TrafficInfo;
 
 /**
  * @author newChar

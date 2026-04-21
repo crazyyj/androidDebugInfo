@@ -1,4 +1,4 @@
-package com.newchar.deviceview.bean;
+package com.newchar.debug.deviceview.bean;
 
 import org.json.JSONException;
 import org.json.JSONObject;

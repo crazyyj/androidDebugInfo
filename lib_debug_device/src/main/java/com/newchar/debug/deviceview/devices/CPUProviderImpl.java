@@ -1,8 +1,8 @@
-package com.newchar.deviceview.devices;
+package com.newchar.debug.deviceview.devices;
 
 import android.os.SystemClock;
 
-import com.newchar.deviceview.bean.CPUInfo;
+import com.newchar.debug.deviceview.bean.CPUInfo;
 
 import java.io.BufferedReader;
 import java.io.FileInputStream;

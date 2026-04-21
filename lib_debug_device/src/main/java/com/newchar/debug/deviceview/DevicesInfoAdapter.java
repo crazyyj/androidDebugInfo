@@ -1,4 +1,4 @@
-package com.newchar.deviceview;
+package com.newchar.debug.deviceview;
 
 import android.content.Context;
 import android.graphics.Color;

@@ -1,4 +1,4 @@
-package com.newchar.deviceview;
+package com.newchar.debug.deviceview;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
@@ -10,12 +10,12 @@ import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 
 import com.newchar.debug.utils.DebugUtils;
-import com.newchar.deviceview.bean.DevicesInfo;
+import com.newchar.debug.deviceview.bean.DevicesInfo;
 
 import java.util.Arrays;
 import java.util.Locale;
 
-final class DeviceStaticInfoCollector {
+public final class DeviceStaticInfoCollector {
 
     private DeviceStaticInfoCollector() {
     }
@@ -48,7 +48,7 @@ final class DeviceStaticInfoCollector {
         return info;
     }
 
-    static CharSequence buildDisplayText(Context context) {
+    public static CharSequence buildDisplayText(Context context) {
         DevicesInfo info = collect(context);
         StringBuilder builder = new StringBuilder();
         appendLine(builder, "厂商", info.getManufacturer());

@@ -1,4 +1,4 @@
-package com.newchar.deviceview.bean;
+package com.newchar.debug.deviceview.bean;
 
 import java.util.ArrayList;
 import java.util.List;

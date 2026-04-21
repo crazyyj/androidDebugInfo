@@ -10,6 +10,10 @@ android {
     defaultConfig {
         minSdk rootProject.ext.minSdkVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        ndk {
+            //noinspection ChromeOsAbiSupport
+            abiFilters 'armeabi-v7a', 'arm64-v8a'
+        }
         consumerProguardFiles(
                 '../lib_debug_core/consumer-rules.pro',
                 '../lib_debug_log/consumer-rules.pro',

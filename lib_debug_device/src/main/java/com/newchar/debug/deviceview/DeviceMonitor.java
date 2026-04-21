@@ -1,19 +1,20 @@
-package com.newchar.deviceview;
+package com.newchar.debug.deviceview;
 
 import android.os.Handler;
 import android.os.Message;
 import android.view.Choreographer;
 
+import com.newchar.debug.deviceview.bean.DevicesInfo;
 import com.newchar.debug.utils.DebugUtils;
 import com.newchar.debug.utils.HandleWrapper;
-import com.newchar.deviceview.bean.CPUInfo;
-import com.newchar.deviceview.bean.DevicesInfo;
-import com.newchar.deviceview.bean.MemoryInfo;
-import com.newchar.deviceview.bean.StorageInfo;
-import com.newchar.deviceview.devices.DevicesInfoFactory;
-import com.newchar.deviceview.devices.ICPUProvider;
-import com.newchar.deviceview.traffic.TrafficInfo;
-import com.newchar.deviceview.traffic.TrafficMonitor;
+import com.newchar.debug.deviceview.bean.CPUInfo;
+import com.newchar.debug.deviceview.bean.DevicesInfo;
+import com.newchar.debug.deviceview.bean.MemoryInfo;
+import com.newchar.debug.deviceview.bean.StorageInfo;
+import com.newchar.debug.deviceview.devices.DevicesInfoFactory;
+import com.newchar.debug.deviceview.devices.ICPUProvider;
+import com.newchar.debug.deviceview.traffic.TrafficInfo;
+import com.newchar.debug.deviceview.traffic.TrafficMonitor;
 
 /**
  * @author newChar

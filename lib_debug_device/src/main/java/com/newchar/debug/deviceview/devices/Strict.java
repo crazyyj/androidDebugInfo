@@ -1,4 +1,4 @@
-package com.newchar.deviceview.devices;
+package com.newchar.debug.deviceview.devices;
 
 import android.os.StrictMode;
 

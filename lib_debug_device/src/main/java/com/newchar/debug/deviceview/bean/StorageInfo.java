@@ -1,4 +1,4 @@
-package com.newchar.deviceview.bean;
+package com.newchar.debug.deviceview.bean;
 
 /**
  * @author newChar
