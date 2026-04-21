@@ -13,8 +13,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.newchar.debug.monitor.jvmti.DebugStackMotion;
 import com.newchar.debug.monitor.jvmti.DebugStackMotionAgent;
 import com.newchar.debug.monitor.jvmti.DebugStackMotionCallback;
-import com.newchar.debug.monitor.plugin.MethodFieldMonitorPlugin;
-import com.newchar.debug.monitor.plugin.PageTaskTopPlugin;
+import com.newchar.debug.plugin.MethodFieldMonitorPlugin;
+import com.newchar.debug.plugin.PageTaskTopPlugin;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;

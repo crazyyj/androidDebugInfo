@@ -1,4 +1,4 @@
-package com.newchar.debug.monitor.plugin;
+package com.newchar.debug.monitor;
 
 import android.app.Activity;
 
@@ -8,13 +8,13 @@ import android.app.Activity;
  * @since 工具类 提供一些通用的方法
  * @since 迭代版本，（以及描述）
  */
-class Utils {
+public class Utils {
 
     public static final String DIALOG_FRAGMENT_FLAG = "androidx.fragment.app.DialogFragment";
 
     public static boolean isAndroidXEnv(Class<? extends Activity> actClazz) {
         try {
-            Class<?> compatActivity = Class.forName("androidx.appcompat.app.AppCompatActivity",
+            Class<?> compatActivity = Class.forName("androidx.core.app.ComponentActivity",
                     false, Thread.currentThread().getContextClassLoader());
             return isSubclass(compatActivity, actClazz);
         } catch (ClassNotFoundException e) {
@@ -22,9 +22,9 @@ class Utils {
         }
     }
 
-    public static boolean isAndroidXDialog(Class<? extends Activity> actClazz) {
+    public static boolean isAndroidXDialog() {
         try {
-            Class<?> dialogClazz = Class.forName("androidx.activity.ComponentDialog",
+            Class.forName("androidx.activity.ComponentDialog",
                     false, Thread.currentThread().getContextClassLoader());
             return true;
         } catch (ClassNotFoundException e) {

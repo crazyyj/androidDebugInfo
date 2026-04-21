@@ -1,4 +1,4 @@
-package com.newchar.debug.monitor.plugin;
+package com.newchar.debug.plugin;
 
 import android.app.Dialog;
 import android.graphics.Color;

@@ -8,7 +8,7 @@ import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
 import androidx.fragment.app.FragmentManager;
 
-import com.newchar.debug.monitor.plugin.IPageLifecycle;
+import com.newchar.debug.monitor.IPageLifecycle;
 
 import java.util.List;
 

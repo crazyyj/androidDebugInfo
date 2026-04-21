@@ -1,4 +1,4 @@
-package com.newchar.debug.net.plugin;
+package com.newchar.debug.plugin;
 
 import android.content.Context;
 import android.graphics.Color;

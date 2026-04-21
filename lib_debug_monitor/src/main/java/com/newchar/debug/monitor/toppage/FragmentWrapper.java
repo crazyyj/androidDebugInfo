@@ -5,7 +5,7 @@ import android.app.Fragment;
 import android.app.FragmentManager;
 import android.os.Build;
 
-import com.newchar.debug.monitor.plugin.IPageLifecycle;
+import com.newchar.debug.monitor.IPageLifecycle;
 
 import android.content.Context;
 import android.util.SparseArray;

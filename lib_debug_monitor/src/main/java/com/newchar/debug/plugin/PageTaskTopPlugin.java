@@ -1,4 +1,4 @@
-package com.newchar.debug.monitor.plugin;
+package com.newchar.debug.plugin;
 
 import android.app.Activity;
 import android.app.Dialog;
@@ -15,11 +15,13 @@ import com.newchar.debug.api.PluginContext;
 import com.newchar.debug.api.ScreenDisplayPlugin;
 import com.newchar.debug.lifecycle.AppLifecycleManager;
 import com.newchar.debug.lifecycle.DefaultActivityCallback;
+import com.newchar.debug.monitor.IPageLifecycle;
+import com.newchar.debug.monitor.Utils;
 import com.newchar.debug.utils.HandleWrapper;
 import com.newchar.debug.monitor.jvmti.DebugStackMotion;
 import com.newchar.debug.monitor.toppage.FragmentWrapper;
 import com.newchar.debug.monitor.toppage.FragmentXWrapper;
-import com.newchar.debug.monitor.plugin.view.TaskTopView;
+import com.newchar.debug.monitor.view.TaskTopView;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;

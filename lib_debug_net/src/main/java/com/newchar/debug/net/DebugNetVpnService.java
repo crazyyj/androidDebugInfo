@@ -4,8 +4,11 @@ import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.VpnService;
+import android.os.Handler;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
+
+import com.newchar.debug.utils.HandleWrapper;
 
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -28,7 +31,7 @@ public class DebugNetVpnService extends VpnService {
 
     private final AtomicBoolean mRunning = new AtomicBoolean(false);
     private ParcelFileDescriptor mTunInterface;
-    private Thread mCaptureThread;
+    private Handler mCaptureHandler;
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
@@ -66,8 +69,8 @@ public class DebugNetVpnService extends VpnService {
                 return;
             }
             DebugNetMonitor.setRunning(true);
-            mCaptureThread = new Thread(this::captureLoop, "debug-net-vpn-capture");
-            mCaptureThread.start();
+            mCaptureHandler = HandleWrapper.obtainAsyncHandler(null);
+            mCaptureHandler.post(this::captureLoop);
         } catch (Throwable throwable) {
             Log.e(TAG, "startCapture failed", throwable);
             stopCapture();
@@ -113,10 +116,10 @@ public class DebugNetVpnService extends VpnService {
         }
         closeTunInterface();
         DebugNetMonitor.setRunning(false);
-        if (mCaptureThread != null && mCaptureThread != Thread.currentThread()) {
-            mCaptureThread.interrupt();
+        if (mCaptureHandler != null) {
+            mCaptureHandler.removeCallbacksAndMessages(null);
         }
-        mCaptureThread = null;
+        mCaptureHandler = null;
     }
 
     private void closeTunInterface() {

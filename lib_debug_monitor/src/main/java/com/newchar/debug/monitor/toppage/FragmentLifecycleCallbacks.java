@@ -7,7 +7,7 @@ import android.os.Bundle;
 
 import androidx.annotation.RequiresApi;
 
-import com.newchar.debug.monitor.plugin.IPageLifecycle;
+import com.newchar.debug.monitor.IPageLifecycle;
 
 @RequiresApi(api = Build.VERSION_CODES.O)
 public class FragmentLifecycleCallbacks extends FragmentManager.FragmentLifecycleCallbacks {

@@ -1,4 +1,4 @@
-package com.newchar.debug.monitor.plugin;
+package com.newchar.debug.monitor;
 
 import android.content.Context;
 
