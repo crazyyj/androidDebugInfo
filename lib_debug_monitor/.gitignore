@@ -1,5 +1,4 @@
 .gradle
-/.build
 /.cxx
 .DS_Store
 /build
