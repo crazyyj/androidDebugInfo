@@ -1,0 +1,6 @@
+.gradle
+/.cxx
+.DS_Store
+/build
+/captures
+.externalNativeBuild

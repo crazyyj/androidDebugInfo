@@ -1,4 +1,4 @@
-package com.newchar.debug.common.widgets.helper;
+package com.newchar.debug.common.helper;
 
 /**
  * Created by newlq on 2017/2/23.

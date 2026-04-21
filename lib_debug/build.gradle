@@ -1,0 +1,91 @@
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace 'com.newchar.lib.base'
+    compileSdk rootProject.ext.compileSdkVersion
+    ndkVersion rootProject.ext.ndkVersion
+
+    defaultConfig {
+        minSdk rootProject.ext.minSdkVersion
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles(
+                '../lib_debug_core/consumer-rules.pro',
+                '../lib_debug_log/consumer-rules.pro',
+                '../lib_debug_device/consumer-rules.pro',
+                '../lib_debug_touch/consumer-rules.pro',
+                '../lib_debug_monitor/consumer-rules.pro',
+                '../lib_debug_net/consumer-rules.pro'
+        )
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++14"
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'),
+                    '../lib_base/proguard-rules.pro',
+                    '../lib_debug_core/proguard-rules.pro',
+                    '../lib_debug_log/proguard-rules.pro',
+                    '../lib_debug_device/proguard-rules.pro',
+                    '../lib_debug_touch/proguard-rules.pro',
+                    '../lib_debug_monitor/proguard-rules.pro',
+                    '../lib_debug_net/proguard-rules.pro'
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
+                    '../lib_base/proguard-rules.pro',
+                    '../lib_debug_core/proguard-rules.pro',
+                    '../lib_debug_log/proguard-rules.pro',
+                    '../lib_debug_device/proguard-rules.pro',
+                    '../lib_debug_touch/proguard-rules.pro',
+                    '../lib_debug_monitor/proguard-rules.pro',
+                    '../lib_debug_net/proguard-rules.pro'
+        }
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile 'src/main/AndroidManifest.xml'
+            java.srcDirs = [
+                    '../lib_base/src/main/java',
+                    '../lib_debug_core/src/main/java',
+                    '../lib_debug_log/src/main/java',
+                    '../lib_debug_device/src/main/java',
+                    '../lib_debug_touch/src/main/java',
+                    '../lib_debug_monitor/src/main/java',
+                    '../lib_debug_net/src/main/java'
+            ]
+            res.srcDirs = [
+                    '../lib_base/src/main/res'
+            ]
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path '../lib_debug_monitor/src/main/cpp/CMakeLists.txt'
+            version '3.22.1'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+}
+
+dependencies {
+    compileOnly "androidx.viewpager:viewpager:1.0.0"
+    compileOnly "androidx.appcompat:appcompat:1.6.1"
+
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+}
