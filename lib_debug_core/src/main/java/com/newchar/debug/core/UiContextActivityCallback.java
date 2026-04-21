@@ -1,7 +1,9 @@
-package com.newchar.debug.lifecycle;
+package com.newchar.debug.core;
 
 import android.app.Activity;
 import android.os.Bundle;
+
+import com.newchar.debug.lifecycle.DefaultActivityCallback;
 
 /**
  * @author newChar

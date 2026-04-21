@@ -1,4 +1,4 @@
-package com.newchar.debug.lifecycle;
+package com.newchar.debug.core;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
@@ -6,15 +6,17 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
 
-import com.newchar.debug.annotation.DebugUiContext;
 import com.newchar.debug.DebugPanelActivity;
 import com.newchar.debug.FloatViewService;
+import com.newchar.debug.annotation.DebugUiContext;
 
 /**
  * @author newChar
@@ -147,8 +149,27 @@ public final class UiContextDisplayCoordinator {
         if (manager == null) {
             return;
         }
+        enableDebugPanelActivity(context);
         createEntryChannelIfNeed(manager);
         manager.notify(ENTRY_NOTIFY_ID, buildEntryNotification(context));
+    }
+
+    /**
+     * 启用独立调试面板 Activity，确保通知入口可启动。
+     *
+     * @param context 上下文
+     */
+    private void enableDebugPanelActivity(Context context) {
+        if (context == null) {
+            return;
+        }
+        PackageManager packageManager = context.getPackageManager();
+        ComponentName componentName = new ComponentName(context, DebugPanelActivity.class);
+        packageManager.setComponentEnabledSetting(
+                componentName,
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                PackageManager.DONT_KILL_APP
+        );
     }
 
     /**

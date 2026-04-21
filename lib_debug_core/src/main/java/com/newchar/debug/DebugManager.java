@@ -6,7 +6,7 @@ import android.app.Application;
 import com.newchar.debug.api.PluginManager;
 import com.newchar.debug.api.ScreenDisplayPlugin;
 import com.newchar.debug.lifecycle.AppLifecycleManager;
-import com.newchar.debug.lifecycle.UiContextActivityCallback;
+import com.newchar.debug.core.UiContextActivityCallback;
 import com.newchar.debug.utils.DebugUtils;
 import com.newchar.debug.view.DebugView;
 import com.newchar.debug.view.DebugViewStore;

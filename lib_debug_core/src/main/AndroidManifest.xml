@@ -10,7 +10,7 @@
 
         <activity
             android:name="com.newchar.debug.DebugPanelActivity"
-            android:enabled="true"
+            android:enabled="false"
             android:exported="false" />
 
         <service
