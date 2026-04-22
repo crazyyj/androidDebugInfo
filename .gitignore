@@ -1,12 +1,12 @@
 *.iml
 .gradle
-/local.properties
 /.build
 /.cxx
 /.idea
 /.codex
 /.vscode
 .DS_Store
-/build
+AGENTS.md
+local.properties
 /captures
 .externalNativeBuild

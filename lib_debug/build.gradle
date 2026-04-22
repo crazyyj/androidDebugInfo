@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace 'com.newchar.lib.base'
+    namespace 'com.newchar.lib.output'
     compileSdk rootProject.ext.compileSdkVersion
     ndkVersion rootProject.ext.ndkVersion
 

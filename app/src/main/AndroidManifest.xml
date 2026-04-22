@@ -1,6 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 
     <application
         android:name=".App"
@@ -41,6 +45,11 @@
             android:name="com.newchar.debug.monitor.DebugMonitorActivity"
             android:exported="false"
             android:label="JVMTI Monitor Demo" />
+
+        <activity
+            android:name=".DiskOperationDemoActivity"
+            android:exported="false"
+            android:label="Disk Operation Demo" />
 
     </application>
 

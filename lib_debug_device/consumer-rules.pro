@@ -1,0 +1,3 @@
+-keep class com.newchar.debug.plugin.DevicesInfoPlugin { *; }
+-keep class com.newchar.debug.plugin.DiskInfoPlugin { *; }
+-keep class com.newchar.debug.deviceview.disk.** { *; }

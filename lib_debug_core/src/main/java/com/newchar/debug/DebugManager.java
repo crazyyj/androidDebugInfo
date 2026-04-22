@@ -108,11 +108,12 @@ public class DebugManager {
                 @Override
                 public void onAppOpen(Activity firstActivity) {
                     registerOptionalPlugin("com.newchar.debug.logview.LogViewPlugin");
-                    registerOptionalPlugin("com.newchar.debug.monitor.plugin.PageTaskTopPlugin");
-                    registerOptionalPlugin("com.newchar.debug.monitor.plugin.MethodFieldMonitorPlugin");
-                    registerOptionalPlugin("com.newchar.debug.touch.TouchRestorePlugin");
-                    registerOptionalPlugin("com.newchar.debug.net.plugin.DebugNetPlugin");
-                    registerOptionalPlugin("com.newchar.deviceview.DevicesInfoPlugin");
+                    registerOptionalPlugin("com.newchar.debug.plugin.PageTaskTopPlugin");
+                    registerOptionalPlugin("com.newchar.debug.plugin.MethodFieldMonitorPlugin");
+                    registerOptionalPlugin("com.newchar.debug.touch.plugin.TouchRestorePlugin");
+                    registerOptionalPlugin("com.newchar.debug.plugin.DebugNetPlugin");
+                    registerOptionalPlugin("com.newchar.debug.plugin.DevicesInfoPlugin");
+                    registerOptionalPlugin("com.newchar.debug.plugin.DiskInfoPlugin");
                 }
 
                 @Override

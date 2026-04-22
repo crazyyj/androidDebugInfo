@@ -10,7 +10,7 @@ import com.newchar.debug.utils.HandleWrapper;
 import com.newchar.debug.deviceview.bean.CPUInfo;
 import com.newchar.debug.deviceview.bean.DevicesInfo;
 import com.newchar.debug.deviceview.bean.MemoryInfo;
-import com.newchar.debug.deviceview.bean.StorageInfo;
+import com.newchar.debug.deviceview.disk.StorageInfo;
 import com.newchar.debug.deviceview.devices.DevicesInfoFactory;
 import com.newchar.debug.deviceview.devices.ICPUProvider;
 import com.newchar.debug.deviceview.traffic.TrafficInfo;

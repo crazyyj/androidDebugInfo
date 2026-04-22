@@ -74,6 +74,13 @@ public class MainActivity extends AppCompatActivity {
                 startActivity(new Intent(MainActivity.this, DebugMonitorActivity.class));
             }
         });
+
+        findViewById(R.id.btn_open_disk_demo).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, DiskOperationDemoActivity.class));
+            }
+        });
     }
 
     private void showFragment(Fragment fragment) {
