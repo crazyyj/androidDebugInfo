@@ -21,6 +21,8 @@ buildscript {
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:8.7.3'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.23"
+        classpath "org.jetbrains.compose:compose-gradle-plugin:1.6.2"
 
         // NOTE: Do not place your application dependencies here; they belong
         // in the individual module build.gradle files
@@ -30,9 +32,25 @@ buildscript {
 allprojects {
     repositories {
         mavenLocal()
-        mavenCentral()
-        google()
+        
+        // 阿里云镜像（主）
         maven { url 'https://maven.aliyun.com/repository/public' }
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+        maven { url 'https://maven.aliyun.com/repository/kotlin' }
+        
+        // 腾讯云镜像
+        maven { url 'https://mirrors.cloud.tencent.com/nexus/repository/maven-public/' }
+        maven { url 'https://mirrors.cloud.tencent.com/repository/maven-google/' }
+        
+        // 清华大学镜像
+        maven { url 'https://mirrors.tuna.tsinghua.edu.cn/maven-central/' }
+        maven { url 'https://mirrors.tuna.tsinghua.edu.cn/help/maven/' }
+        
+        // 官方源
+        google()
+        mavenCentral()
+        maven { url 'https://maven.pkg.jetbrains.space/public/p/compose/dev' }
     }
 }
 
