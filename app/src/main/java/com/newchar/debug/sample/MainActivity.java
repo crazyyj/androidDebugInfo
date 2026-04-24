@@ -10,7 +10,7 @@ import androidx.fragment.app.Fragment;
 import com.newchar.debug.logview.LogViewPlugin;
 import com.newchar.debug.annotation.DebugUiContext;
 import com.newchar.debug.DebugManager;
-import com.newchar.debug.monitor.DebugMonitorActivity;
+import com.newchar.debug.sample.monitor.DebugMonitorActivity;
 
 /**
  * @author newChar

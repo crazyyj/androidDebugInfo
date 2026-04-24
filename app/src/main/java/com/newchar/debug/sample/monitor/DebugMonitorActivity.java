@@ -1,4 +1,4 @@
-package com.newchar.debug.monitor;
+package com.newchar.debug.sample.monitor;
 
 import android.os.Bundle;
 import android.os.Handler;
