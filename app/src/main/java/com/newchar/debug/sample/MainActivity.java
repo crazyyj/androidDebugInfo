@@ -7,7 +7,7 @@ import android.view.View;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.fragment.app.Fragment;
 
-import com.newchar.debug.logview.LogViewPlugin;
+import com.newchar.debug.log.LogViewPlugin;
 import com.newchar.debug.annotation.DebugUiContext;
 import com.newchar.debug.DebugManager;
 import com.newchar.debug.sample.monitor.DebugMonitorActivity;

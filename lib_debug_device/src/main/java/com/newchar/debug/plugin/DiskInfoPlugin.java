@@ -10,8 +10,8 @@ import android.widget.TextView;
 import com.newchar.debug.api.PluginContext;
 import com.newchar.debug.api.ScreenDisplayPlugin;
 import com.newchar.debug.common.utils.ViewUtils;
-import com.newchar.debug.deviceview.disk.DiskMonitor;
-import com.newchar.debug.deviceview.disk.DiskSnapshot;
+import com.newchar.debug.device.disk.DiskMonitor;
+import com.newchar.debug.device.disk.DiskSnapshot;
 
 public class DiskInfoPlugin extends ScreenDisplayPlugin {
     public static final String TAG_PLUGIN = "DISK_INFO";

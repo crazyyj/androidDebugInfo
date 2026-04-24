@@ -7,16 +7,16 @@ import android.view.ViewGroup;
 import com.newchar.debug.common.utils.ViewUtils;
 import com.newchar.debug.api.PluginContext;
 import com.newchar.debug.api.ScreenDisplayPlugin;
-import com.newchar.debug.deviceview.DeviceMonitor;
-import com.newchar.debug.deviceview.DeviceStaticInfoCollector;
-import com.newchar.debug.deviceview.DevicesInfoCallback;
-import com.newchar.debug.deviceview.DevicesInfoView;
+import com.newchar.debug.device.DeviceMonitor;
+import com.newchar.debug.device.DeviceStaticInfoCollector;
+import com.newchar.debug.device.DevicesInfoCallback;
+import com.newchar.debug.device.DevicesInfoView;
 import com.newchar.debug.utils.DebugUtils;
-import com.newchar.debug.deviceview.bean.CPUInfo;
-import com.newchar.debug.deviceview.bean.DevicesInfo;
-import com.newchar.debug.deviceview.bean.MemoryInfo;
-import com.newchar.debug.deviceview.disk.StorageInfo;
-import com.newchar.debug.deviceview.traffic.TrafficInfo;
+import com.newchar.debug.device.bean.CPUInfo;
+import com.newchar.debug.device.bean.DevicesInfo;
+import com.newchar.debug.device.bean.MemoryInfo;
+import com.newchar.debug.device.disk.StorageInfo;
+import com.newchar.debug.device.traffic.TrafficInfo;
 
 /**
  * 展示设备基础信息与运行时监控数据。
