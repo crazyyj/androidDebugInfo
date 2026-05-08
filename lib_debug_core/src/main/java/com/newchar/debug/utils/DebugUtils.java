@@ -24,7 +24,7 @@ import android.util.DisplayMetrics;
 import android.util.Size;
 import android.view.ViewGroup;
 
-import com.newchar.debug.common.utils.ViewUtils;
+import com.newchar.debug.base.utils.ViewUtils;
 
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;

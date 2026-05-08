@@ -3,7 +3,7 @@ package com.newchar.debug;
 import android.content.Context;
 import android.graphics.Rect;
 
-import com.newchar.debug.common.utils.UIUtils;
+import com.newchar.debug.base.utils.UIUtils;
 import com.newchar.debug.view.DebugView;
 
 /**

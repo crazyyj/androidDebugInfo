@@ -15,7 +15,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-import com.newchar.debug.common.utils.ViewUtils;
+import com.newchar.debug.base.utils.ViewUtils;
 
 import java.lang.ref.WeakReference;
 

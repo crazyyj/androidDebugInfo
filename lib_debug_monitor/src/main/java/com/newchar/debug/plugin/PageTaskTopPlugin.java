@@ -10,7 +10,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.PopupWindow;
 
-import com.newchar.debug.common.utils.ViewUtils;
+import com.newchar.debug.base.utils.ViewUtils;
 import com.newchar.debug.api.PluginContext;
 import com.newchar.debug.api.ScreenDisplayPlugin;
 import com.newchar.debug.lifecycle.AppLifecycleManager;

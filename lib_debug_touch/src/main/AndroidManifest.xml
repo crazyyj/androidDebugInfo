@@ -6,13 +6,13 @@
 
     <application>
         <activity
-            android:name="com.newchar.debug.touch.ScreenRecordPermissionActivity"
+            android:name=".ScreenRecordPermissionActivity"
             android:excludeFromRecents="true"
             android:exported="false"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <service
-            android:name="com.newchar.debug.touch.ScreenRecordService"
+            android:name=".ScreenRecordService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />

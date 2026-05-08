@@ -14,7 +14,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.newchar.debug.common.utils.ViewUtils;
+import com.newchar.debug.base.utils.ViewUtils;
 import com.newchar.debug.utils.DebugUtils;
 //import com.newchar.debug.utils.DebugUtils;
 //import com.newchar.debug.view.DebugView;

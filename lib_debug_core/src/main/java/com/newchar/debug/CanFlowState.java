@@ -7,7 +7,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
 
-import com.newchar.debug.common.utils.ViewUtils;
+import com.newchar.debug.base.utils.ViewUtils;
 import com.newchar.debug.utils.DebugUtils;
 import com.newchar.debug.view.DebugView;
 

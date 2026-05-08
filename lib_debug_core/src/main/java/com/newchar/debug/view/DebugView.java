@@ -9,7 +9,7 @@ import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import com.newchar.debug.common.utils.Prompt;
+import com.newchar.debug.base.utils.Prompt;
 import com.newchar.debug.api.PluginContext;
 import com.newchar.debug.api.PluginManager;
 import com.newchar.debug.api.ScreenDisplayPlugin;

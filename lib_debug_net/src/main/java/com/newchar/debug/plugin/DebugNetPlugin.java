@@ -11,7 +11,7 @@ import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.TextView;
 
-import com.newchar.debug.common.utils.ViewUtils;
+import com.newchar.debug.base.utils.ViewUtils;
 import com.newchar.debug.net.DebugNetEvent;
 import com.newchar.debug.net.DebugNetMonitor;
 import com.newchar.debug.net.DebugNetTrafficListener;

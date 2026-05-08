@@ -9,7 +9,7 @@ import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ListView;
 
-import com.newchar.debug.common.utils.ViewUtils;
+import com.newchar.debug.base.utils.ViewUtils;
 import com.newchar.debug.lifecycle.AppLifecycleManager;
 import com.newchar.debug.api.PluginContext;
 import com.newchar.debug.api.ScreenDisplayPlugin;

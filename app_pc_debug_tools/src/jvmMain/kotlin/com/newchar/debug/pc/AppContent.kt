@@ -108,6 +108,7 @@ fun AppContent(
     var packageError by remember { mutableStateOf<String?>(null) }
     var packageList by remember { mutableStateOf(emptyList<InstalledAppInfo>()) }
     var wirelessPromptDevice by remember { mutableStateOf<DeviceInfo?>(null) }
+    var showLogcatCollector by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
     val settingsStore = remember { DesktopAppSettingsStore() }
@@ -279,6 +280,13 @@ fun AppContent(
                     onClick = { showAddDeviceDialog = true },
                 )
             }
+
+            AppOutlinedButton(
+                text = "Logcat 日志收集",
+                prefix = "📋",
+                modifier = Modifier.fillMaxWidth().height(44.dp),
+                onClick = { showLogcatCollector = true },
+            )
 
             PanelCard(modifier = Modifier.fillMaxWidth()) {
                 DetailRow(label = "ADB Config", value = adbExecutablePath.ifBlank { "PATH / ENV" })
@@ -458,6 +466,16 @@ fun AppContent(
                 onDismissSettings()
             },
         )
+    }
+
+    if (showLogcatCollector) {
+        Dialog(onDismissRequest = { showLogcatCollector = false }) {
+            com.newchar.debug.pc.device.logcat.LogcatCollectorPanel(
+                devices = deviceList,
+                onDismiss = { showLogcatCollector = false },
+                executor = executor,
+            )
+        }
     }
 }
 

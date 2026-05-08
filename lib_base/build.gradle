@@ -4,12 +4,13 @@ plugins {
 
 
 android {
+    namespace "com.newchar.debug.base"
+
     compileSdk rootProject.ext.compileSdkVersion
 
     defaultConfig {
         minSdk rootProject.ext.minSdkVersion
     }
-    namespace "com.newchar.lib.base"
 
     buildTypes {
         release {

@@ -2,14 +2,13 @@ package com.newchar.debug.touch;
 
 import android.app.Activity;
 import android.os.Handler;
-import android.os.Parcel;
 import android.view.MotionEvent;
 import android.view.Window;
 
-import com.newchar.debug.utils.DebugUtils;
 import com.newchar.debug.utils.HandleWrapper;
 
 import java.io.File;
+import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -114,7 +113,7 @@ class RecordTouchEventTask implements Runnable {
         }
         File dir = new File(activity.getExternalCacheDir(), ".v");
         if ((dir.exists() && dir.isDirectory()) || dir.mkdirs()) {
-            return new File(dir, "touch-" + activity.getClass().getSimpleName() + "#" + activity.hashCode() + ".rec");
+            return MotionEventSerializer.createTouchRecordFile(dir, activity.getClass().getSimpleName());
         }
         return null;
     }
@@ -128,6 +127,7 @@ class RecordTouchEventTask implements Runnable {
         private Window.Callback mOriginCallback;
         private final File mRecordFile;
         private final Handler mRecordHandler;
+        private MotionEventSerializer.TouchRecordWriter mRecordWriter;
 
         /**
          * 创建触摸事件采集代理。
@@ -138,6 +138,16 @@ class RecordTouchEventTask implements Runnable {
             mPagRef = new WeakReference<>(activity);
             mOriginCallback = activity.getWindow().getCallback();
             mRecordFile = buildRecordFile(activity);
+            
+            if (mRecordFile != null) {
+                try {
+                    mRecordWriter = new MotionEventSerializer.TouchRecordWriter(
+                            mRecordFile, activity.getClass().getSimpleName());
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+            
             mRecordHandler = HandleWrapper.obtainAsyncHandler(message -> {
                 if (message.obj instanceof MotionEvent) {
                     MotionEvent event = (MotionEvent) message.obj;
@@ -183,6 +193,16 @@ class RecordTouchEventTask implements Runnable {
                 activity.getWindow().setCallback(mOriginCallback);
             }
             mRecordHandler.removeCallbacksAndMessages(null);
+            
+            if (mRecordWriter != null) {
+                try {
+                    mRecordWriter.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                mRecordWriter = null;
+            }
+            
             mOriginCallback = null;
         }
 
@@ -201,7 +221,7 @@ class RecordTouchEventTask implements Runnable {
          * @param motionEvent 触摸事件
          */
         private void recordMotionEvent(MotionEvent motionEvent) {
-            if (motionEvent == null || mRecordFile == null) {
+            if (motionEvent == null || mRecordWriter == null) {
                 return;
             }
             MotionEvent copiedEvent = MotionEvent.obtain(motionEvent);
@@ -209,16 +229,14 @@ class RecordTouchEventTask implements Runnable {
         }
 
         private void writeMotionEventOnWorker(MotionEvent motionEvent) {
-            if (motionEvent == null || mRecordFile == null) {
+            if (motionEvent == null || mRecordWriter == null) {
                 return;
             }
-            Parcel obtain = Parcel.obtain();
-            obtain.setDataPosition(0);
-            motionEvent.writeToParcel(obtain, 0);
-            byte[] marshall = obtain.marshall();
-            obtain.recycle();
-
-            DebugUtils.appendBytesToFile(marshall, mRecordFile);
+            try {
+                mRecordWriter.writeEvent(motionEvent);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
 
         /**

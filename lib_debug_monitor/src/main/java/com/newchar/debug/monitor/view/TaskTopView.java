@@ -12,7 +12,7 @@ import android.widget.ExpandableListView;
 import android.widget.FrameLayout;
 import android.widget.ListView;
 
-import com.newchar.debug.common.utils.ViewUtils;
+import com.newchar.debug.base.utils.ViewUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;

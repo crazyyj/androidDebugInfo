@@ -1,4 +1,4 @@
-package com.newchar.debug.touch.plugin;
+package com.newchar.debug.plugin;
 
 import android.content.Context;
 import android.graphics.Color;

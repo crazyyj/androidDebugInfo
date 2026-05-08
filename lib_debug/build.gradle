@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace 'com.newchar.lib.output'
+    namespace 'com.newchar.debug.lib'
     compileSdk rootProject.ext.compileSdkVersion
     ndkVersion rootProject.ext.ndkVersion
 
@@ -74,7 +74,7 @@ android {
 
     externalNativeBuild {
         cmake {
-            path '../lib_debug_monitor/src/main/cpp/CMakeLists.txt'
+            path '../lib_debug_core/src/main/cpp/CMakeLists.txt'
             version '3.22.1'
         }
     }
