@@ -10,6 +10,7 @@ ext {
     compileSdkVersion = (appProps.getProperty("COMPILE_SDK", "35") as String).toInteger()
     minSdkVersion = (appProps.getProperty("MIN_SDK", "23") as String).toInteger()
     ndkVersion = appProps.getProperty("NDK_VERSION", "28.1.13356709") as String
+    kotlinStdlibVersion = "1.8.22"
 }
 
 buildscript {
@@ -51,6 +52,17 @@ allprojects {
         google()
         mavenCentral()
         maven { url 'https://maven.pkg.jetbrains.space/public/p/compose/dev' }
+    }
+}
+
+subprojects {
+    configurations.configureEach {
+        resolutionStrategy {
+            force "org.jetbrains.kotlin:kotlin-stdlib:${rootProject.ext.kotlinStdlibVersion}"
+            force "org.jetbrains.kotlin:kotlin-stdlib-common:${rootProject.ext.kotlinStdlibVersion}"
+            force "org.jetbrains.kotlin:kotlin-stdlib-jdk7:${rootProject.ext.kotlinStdlibVersion}"
+            force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:${rootProject.ext.kotlinStdlibVersion}"
+        }
     }
 }
 

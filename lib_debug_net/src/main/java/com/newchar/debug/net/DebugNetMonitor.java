@@ -3,6 +3,10 @@ package com.newchar.debug.net;
 import android.content.Context;
 import android.content.Intent;
 import android.net.VpnService;
+import android.os.Handler;
+
+import com.newchar.debug.utils.HandleWrapper;
+
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -12,13 +16,21 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public final class DebugNetMonitor {
 
     private static final List<DebugNetTrafficListener> LISTENERS = new CopyOnWriteArrayList<>();
+    private static final Handler WORK_HANDLER = HandleWrapper.obtainAsyncHandler(null);
     private static volatile boolean sRunning;
+    private static volatile DebugNetConfig sConfig = DebugNetConfig.defaultConfig();
+    private static volatile DebugNetPostProcessor sPostProcessor;
 
     private DebugNetMonitor() {
     }
 
     public static boolean start(Context context) {
         if (context == null) {
+            return false;
+        }
+        String configError = sConfig.validateForStart();
+        if (configError != null) {
+            dispatch(buildConfigErrorEvent(configError));
             return false;
         }
         Context appContext = context.getApplicationContext();
@@ -64,6 +76,22 @@ public final class DebugNetMonitor {
         return sRunning;
     }
 
+    public static void setConfig(DebugNetConfig config) {
+        sConfig = config == null ? DebugNetConfig.defaultConfig() : config;
+    }
+
+    public static DebugNetConfig getConfig() {
+        return sConfig;
+    }
+
+    public static void setPostProcessor(DebugNetPostProcessor processor) {
+        sPostProcessor = processor;
+    }
+
+    public static void clearPostProcessor() {
+        sPostProcessor = null;
+    }
+
     static void setRunning(boolean running) {
         sRunning = running;
     }
@@ -72,18 +100,47 @@ public final class DebugNetMonitor {
         if (event == null) {
             return;
         }
+        enqueueDispatch(event);
+    }
+
+    private static void enqueueDispatch(DebugNetEvent event) {
+        WORK_HANDLER.post(() -> dispatchOnWorker(event));
+    }
+
+    private static void dispatchOnWorker(DebugNetEvent event) {
+        DebugNetEvent finalEvent = event;
+        try {
+            DebugNetPostProcessor processor = sPostProcessor;
+            if (processor != null) {
+                DebugNetPayload payload = processor.process(new DebugNetPayload(event));
+                if (payload != null && payload.getEvent() != null) {
+                    finalEvent = payload.getEvent();
+                }
+            }
+        } catch (Throwable throwable) {
+            finalEvent.setFailureReason(throwable.getMessage());
+        }
+        finalEvent.refreshTexts();
         for (DebugNetTrafficListener listener : LISTENERS) {
             if (listener == null) {
                 continue;
             }
             boolean next = true;
             try {
-                next = listener.onTrafficEvent(event);
+                next = listener.onTrafficEvent(finalEvent);
             } catch (Throwable ignored) {
             }
             if (!next) {
                 return;
             }
         }
+    }
+
+    private static DebugNetEvent buildConfigErrorEvent(String message) {
+        DebugNetEvent event = new DebugNetEvent(TrafficDirection.UPLOAD, "CONFIG", "", 0, "", 0, 0);
+        event.setFailureReason(message);
+        event.setRequestPath("/debug-net/config");
+        event.setDisplayText("配置错误: " + message);
+        return event;
     }
 }

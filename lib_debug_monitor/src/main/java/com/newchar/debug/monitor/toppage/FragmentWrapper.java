@@ -6,6 +6,7 @@ import android.app.FragmentManager;
 import android.os.Build;
 
 import com.newchar.debug.monitor.IPageLifecycle;
+import com.newchar.debug.monitor.Utils;
 
 import android.content.Context;
 import android.util.SparseArray;
@@ -91,6 +92,9 @@ public class FragmentWrapper {
         HashSet<Integer> activeIds = new HashSet<>();
         for (Fragment f : fragments) {
             if (f == null) continue;
+            if (shouldBreakFragmentCallback(f)) {
+                continue;
+            }
             int id = f.hashCode();
             activeIds.add(id);
             if (!mKnown.contains(id)) {
@@ -130,6 +134,16 @@ public class FragmentWrapper {
                 mPageLifecycle.onPageDestroy(ctx, rid, clazz);
             }
         }
+    }
+
+    /**
+     * 判断 Fragment 回调是否需要中断。
+     *
+     * @param fragment 当前 Fragment
+     * @return true 表示不进入 Fragment 监控流程
+     */
+    private boolean shouldBreakFragmentCallback(Fragment fragment) {
+        return fragment != null && Utils.isDialogFragmentClass(fragment.getClass());
     }
 
     @SuppressWarnings("unchecked")

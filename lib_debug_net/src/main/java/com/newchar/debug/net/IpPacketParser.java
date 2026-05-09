@@ -27,7 +27,9 @@ final class IpPacketParser {
         if (version == 6) {
             return parseIpv6(packet, length, direction);
         }
-        return new DebugNetEvent(direction, "IP" + version, "unknown", 0, "unknown", 0, length);
+        DebugNetEvent unknown = new DebugNetEvent(direction, "IP" + version, "unknown", 0, "unknown", 0, length);
+        unknown.setRequestPath("/unknown");
+        return unknown;
     }
 
     private static DebugNetEvent parseIpv4(byte[] packet, int length, TrafficDirection direction) {
@@ -47,8 +49,19 @@ final class IpPacketParser {
             sourcePort = readUnsignedShort(packet, headerLength);
             destinationPort = readUnsignedShort(packet, headerLength + 2);
         }
-        return new DebugNetEvent(direction, protocolName(protocol), source, sourcePort, destination, destinationPort,
-                length);
+        DebugNetEvent event = new DebugNetEvent(direction, protocolName(protocol), source, sourcePort, destination,
+                destinationPort, length);
+        // 仅做非常轻量的 path 猜测：HTTP 请求行通常以 "GET /path" 开头，但由于当前没有 TCP 重组，命中率有限。
+        if (protocol == PROTOCOL_TCP) {
+            String path = tryParseHttpPath(packet, headerLength);
+            if (path != null) {
+                event.setRequestPath(path);
+            }
+            if (destinationPort == 443 || sourcePort == 443) {
+                event.setHttps(true);
+            }
+        }
+        return event;
     }
 
     private static DebugNetEvent parseIpv6(byte[] packet, int length, TrafficDirection direction) {
@@ -64,8 +77,18 @@ final class IpPacketParser {
             sourcePort = readUnsignedShort(packet, 40);
             destinationPort = readUnsignedShort(packet, 42);
         }
-        return new DebugNetEvent(direction, protocolName(protocol), source, sourcePort, destination, destinationPort,
-                length);
+        DebugNetEvent event = new DebugNetEvent(direction, protocolName(protocol), source, sourcePort, destination,
+                destinationPort, length);
+        if (protocol == PROTOCOL_TCP) {
+            String path = tryParseHttpPath(packet, 40);
+            if (path != null) {
+                event.setRequestPath(path);
+            }
+            if (destinationPort == 443 || sourcePort == 443) {
+                event.setHttps(true);
+            }
+        }
+        return event;
     }
 
     private static String protocolName(int protocol) {
@@ -111,5 +134,57 @@ final class IpPacketParser {
         } catch (UnknownHostException ignored) {
             return "unknown";
         }
+    }
+
+    private static String tryParseHttpPath(byte[] packet, int transportHeaderOffset) {
+        if (packet == null) {
+            return null;
+        }
+        int tcpHeaderMinOffset = transportHeaderOffset + 20;
+        if (packet.length < tcpHeaderMinOffset) {
+            return null;
+        }
+        int dataOffset = ((packet[transportHeaderOffset + 12] >> 4) & 0x0F) * 4;
+        if (dataOffset < 20) {
+            return null;
+        }
+        int payloadOffset = transportHeaderOffset + dataOffset;
+        if (payloadOffset < 0 || payloadOffset >= packet.length) {
+            return null;
+        }
+        int limit = Math.min(packet.length, payloadOffset + 256);
+        // Request line: METHOD SP PATH SP HTTP/1.1
+        int methodEnd = indexOfByte(packet, payloadOffset, limit, (byte) ' ');
+        if (methodEnd <= payloadOffset) {
+            return null;
+        }
+        // 支持常见方法
+        int methodLen = methodEnd - payloadOffset;
+        if (!(methodLen == 3 || methodLen == 4 || methodLen == 5 || methodLen == 6 || methodLen == 7)) {
+            return null;
+        }
+        int pathStart = methodEnd + 1;
+        if (pathStart >= limit) {
+            return null;
+        }
+        int pathEnd = indexOfByte(packet, pathStart, limit, (byte) ' ');
+        if (pathEnd <= pathStart) {
+            return null;
+        }
+        // 必须以 '/' 开头，避免误判
+        if (packet[pathStart] != (byte) '/') {
+            return null;
+        }
+        // HTTP request line is ASCII-compatible.
+        return new String(packet, pathStart, pathEnd - pathStart, java.nio.charset.StandardCharsets.US_ASCII);
+    }
+
+    private static int indexOfByte(byte[] data, int start, int end, byte target) {
+        for (int i = start; i < end; i++) {
+            if (data[i] == target) {
+                return i;
+            }
+        }
+        return -1;
     }
 }

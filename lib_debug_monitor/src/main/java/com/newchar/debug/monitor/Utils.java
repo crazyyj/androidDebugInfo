@@ -32,6 +32,28 @@ public class Utils {
         }
     }
 
+    /**
+     * 判断类是否为平台或 AndroidX DialogFragment。
+     *
+     * @param childClass 待判断类
+     * @return true 表示 DialogFragment 类型
+     */
+    public static boolean isDialogFragmentClass(Class<?> childClass) {
+        if (childClass == null) {
+            return false;
+        }
+        if (isSubclass(android.app.DialogFragment.class, childClass)) {
+            return true;
+        }
+        try {
+            Class<?> dialogFragmentClass = Class.forName(DIALOG_FRAGMENT_FLAG,
+                    false, Thread.currentThread().getContextClassLoader());
+            return isSubclass(dialogFragmentClass, childClass);
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
+    }
+
     public static boolean isAndroidV4Env() {
         try {
             Class.forName("android.support.v4.app.FragmentActivity",

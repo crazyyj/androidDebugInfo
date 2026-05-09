@@ -27,8 +27,8 @@ android {
 }
 
 dependencies {
-    compileOnly project(':lib_debug_core')
     compileOnly project(':lib_base')
+    compileOnly project(':lib_debug_core')
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'

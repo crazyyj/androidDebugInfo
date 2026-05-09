@@ -1,3 +1,4 @@
+import org.gradle.api.tasks.compile.JavaCompile
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 plugins {
@@ -30,6 +31,8 @@ repositories {
 }
 
 kotlin {
+    jvmToolchain(17)
+
     jvm("jvm") {
         withJava()
         compilations.all {
@@ -82,6 +85,10 @@ kotlin {
             }
         }
     }
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.release.set(17)
 }
 
 compose.desktop {

@@ -19,6 +19,7 @@ import com.newchar.debug.monitor.IPageLifecycle;
 import com.newchar.debug.monitor.Utils;
 import com.newchar.debug.utils.HandleWrapper;
 import com.newchar.debug.monitor.jvmti.DebugStackMotion;
+import com.newchar.debug.monitor.hook.HookInit;
 import com.newchar.debug.monitor.toppage.FragmentWrapper;
 import com.newchar.debug.monitor.toppage.FragmentXWrapper;
 import com.newchar.debug.monitor.view.TaskTopView;
@@ -172,6 +173,7 @@ public class PageTaskTopPlugin extends ScreenDisplayPlugin {
     public void onLoad(PluginContext ctx, ViewGroup pluginContainerView) {
         initTaskTopView(pluginContainerView);
         DebugStackMotion.init();
+        HookInit.init(ctx.getContext());
         // 默认注册插件内部演示字段，确保字段修改链路可直接验证。
         addWatchField(PageTaskTopPlugin.class, "mFieldTickCount");
         addWatchField(PageTaskTopPlugin.class, "mFieldTickState");
@@ -254,7 +256,29 @@ public class PageTaskTopPlugin extends ScreenDisplayPlugin {
 
     private void registerUiMethodInterests() {
         registerMethodsByName(Dialog.class, true, "show", "dismiss", "cancel", "hide");
+        registerMethodsByName(android.app.DialogFragment.class, true, "show", "showNow", "dismiss",
+                "dismissAllowingStateLoss");
+        registerMethodsByClassName(Utils.DIALOG_FRAGMENT_FLAG, true, "show", "showNow", "dismiss",
+                "dismissAllowingStateLoss");
         registerMethodsByName(PopupWindow.class, true, "showAsDropDown", "showAtLocation", "dismiss");
+    }
+
+    /**
+     * 按类名注册 UI 方法监听，避免可选依赖缺失时影响插件初始化。
+     *
+     * @param className 类名
+     * @param includeSubclasses 是否包含子类
+     * @param methodNames 方法名列表
+     */
+    private void registerMethodsByClassName(String className, boolean includeSubclasses, String... methodNames) {
+        if (className == null || className.isEmpty()) {
+            return;
+        }
+        try {
+            Class<?> clazz = Class.forName(className, false, Thread.currentThread().getContextClassLoader());
+            registerMethodsByName(clazz, includeSubclasses, methodNames);
+        } catch (Throwable ignored) {
+        }
     }
 
     private void registerMethodsByName(Class<?> ownerClass, boolean includeSubclasses, String... methodNames) {
@@ -640,7 +664,7 @@ public class PageTaskTopPlugin extends ScreenDisplayPlugin {
         int type = UI_TYPE_NONE;
         try {
             Class<?> clazz = Class.forName(className);
-            if (Dialog.class.isAssignableFrom(clazz)) {
+            if (Dialog.class.isAssignableFrom(clazz) || Utils.isDialogFragmentClass(clazz)) {
                 type = UI_TYPE_DIALOG;
             } else if (PopupWindow.class.isAssignableFrom(clazz)) {
                 type = UI_TYPE_POPUP;
@@ -664,6 +688,7 @@ public class PageTaskTopPlugin extends ScreenDisplayPlugin {
 
     private boolean isDismissMethod(String methodName) {
         return "dismiss".equals(methodName)
+                || "dismissAllowingStateLoss".equals(methodName)
                 || "cancel".equals(methodName)
                 || "hide".equals(methodName);
     }

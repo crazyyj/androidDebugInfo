@@ -1,4 +1,4 @@
-package com.newchar.debug.log.plugin;
+package com.newchar.debug.plugin;
 
 import android.content.Context;
 import android.graphics.Bitmap;

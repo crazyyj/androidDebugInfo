@@ -1,8 +1,11 @@
 package com.newchar.debug.device.devices;
 
+import android.os.Handler;
+import android.os.Looper;
 import android.os.SystemClock;
 
 import com.newchar.debug.device.bean.CPUInfo;
+import com.newchar.debug.utils.HandleWrapper;
 
 import java.io.BufferedReader;
 import java.io.FileInputStream;
@@ -13,16 +16,23 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/**
- * @author newChar
- * date 2023/2/12
- * @since 看接口层
- * @since 迭代版本，（以及描述）
- */
 public class CPUProviderImpl implements ICPUProvider {
 
-    {
-        buildBasicCpuInfo();
+    private static final int MSG_BUILD_BASIC_INFO = 1;
+
+    private volatile boolean mBasicInfoReady = false;
+
+    private final Handler mWorkHandler;
+
+    public CPUProviderImpl() {
+        mWorkHandler = HandleWrapper.obtainAsyncHandler(msg -> {
+            if (msg.what == MSG_BUILD_BASIC_INFO) {
+                buildBasicCpuInfo();
+                mBasicInfoReady = true;
+            }
+            return false;
+        });
+        mWorkHandler.sendEmptyMessage(MSG_BUILD_BASIC_INFO);
     }
 
     @Override
@@ -186,6 +196,9 @@ public class CPUProviderImpl implements ICPUProvider {
      * @return 当前CPU使用率%(from 0 to 100)
      */
     public float getCpuUsage(int pid) {
+        if (!mBasicInfoReady) {
+            return 0.0F;
+        }
         final String cpu = "/proc/%1$d/stat";
         try (BufferedReader bufferedReader = new BufferedReader(
                 new InputStreamReader(new FileInputStream(String.format(Locale.getDefault(), cpu, pid))))) {

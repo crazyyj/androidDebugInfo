@@ -97,6 +97,7 @@ public class DebugNetVpnService extends VpnService {
                 }
                 byte[] packet = Arrays.copyOf(buffer, length);
                 DebugNetEvent event = IpPacketParser.parse(packet, length, TrafficDirection.UPLOAD);
+                // 当前实现仅解析包头；后续可在此接入会话重组/HTTP 解析/TLS 解密并填充 event 的 path/status 等字段。
                 DebugNetMonitor.dispatch(event);
             }
         } catch (IOException e) {

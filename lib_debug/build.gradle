@@ -42,7 +42,7 @@ android {
                     '../lib_debug_net/proguard-rules.pro'
         }
         release {
-            minifyEnabled false
+            minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
                     '../lib_base/proguard-rules.pro',
                     '../lib_debug_core/proguard-rules.pro',
