@@ -19,7 +19,6 @@ import com.newchar.debug.monitor.IPageLifecycle;
 import com.newchar.debug.monitor.Utils;
 import com.newchar.debug.utils.HandleWrapper;
 import com.newchar.debug.monitor.jvmti.DebugStackMotion;
-import com.newchar.debug.monitor.hook.HookInit;
 import com.newchar.debug.monitor.toppage.FragmentWrapper;
 import com.newchar.debug.monitor.toppage.FragmentXWrapper;
 import com.newchar.debug.monitor.view.TaskTopView;
@@ -173,7 +172,7 @@ public class PageTaskTopPlugin extends ScreenDisplayPlugin {
     public void onLoad(PluginContext ctx, ViewGroup pluginContainerView) {
         initTaskTopView(pluginContainerView);
         DebugStackMotion.init();
-        HookInit.init(ctx.getContext());
+        // HookInit.init(ctx.getContext());
         // 默认注册插件内部演示字段，确保字段修改链路可直接验证。
         addWatchField(PageTaskTopPlugin.class, "mFieldTickCount");
         addWatchField(PageTaskTopPlugin.class, "mFieldTickState");

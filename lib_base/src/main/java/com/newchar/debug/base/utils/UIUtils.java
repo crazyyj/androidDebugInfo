@@ -13,8 +13,6 @@ import android.util.TypedValue;
 import android.view.View;
 import android.view.WindowManager;
 
-import com.newchar.debug.base.helper.ApplicationCompat;
-
 /**
  * Created by newlq on 2016/10/1.
  */
@@ -37,7 +35,7 @@ public class UIUtils {
     }
 
     public static boolean isMainThread() {
-        return ApplicationCompat.getMainThread().getId() == Thread.currentThread().getId();
+        return ApplicationCompat.getMainThread() == Thread.currentThread();
     }
 
 

@@ -13,6 +13,9 @@ import java.lang.ref.WeakReference;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 /**
  * @author newChar
@@ -105,17 +108,14 @@ class RecordTouchEventTask implements Runnable {
      * 构建触摸事件记录文件。
      *
      * @param activity 页面实例
+     * @param dateDir  已创建的日期目录（在初始化时缓存）
      * @return 记录文件
      */
-    private static File buildRecordFile(Activity activity) {
-        if (activity == null || activity.getExternalCacheDir() == null) {
+    private static File buildRecordFile(Activity activity, File dateDir) {
+        if (activity == null || dateDir == null) {
             return null;
         }
-        File dir = new File(activity.getExternalCacheDir(), ".v");
-        if ((dir.exists() && dir.isDirectory()) || dir.mkdirs()) {
-            return MotionEventSerializer.createTouchRecordFile(dir, activity.getClass().getSimpleName());
-        }
-        return null;
+        return MotionEventSerializer.createTouchRecordFile(dateDir, activity.getClass().getSimpleName());
     }
 
     static final class TouchCallbackProxy implements InvocationHandler {
@@ -137,7 +137,9 @@ class RecordTouchEventTask implements Runnable {
         TouchCallbackProxy(Activity activity) {
             mPagRef = new WeakReference<>(activity);
             mOriginCallback = activity.getWindow().getCallback();
-            mRecordFile = buildRecordFile(activity);
+            
+            File dateDir = createDateDirectory(activity);
+            mRecordFile = buildRecordFile(activity, dateDir);
             
             if (mRecordFile != null) {
                 try {
@@ -159,6 +161,28 @@ class RecordTouchEventTask implements Runnable {
                 }
                 return true;
             });
+        }
+
+        /**
+         * 创建按日期命名的录制目录（仅在初始化时调用一次）。
+         *
+         * @param activity 页面实例
+         * @return 日期目录，如果创建失败则返回 null
+         */
+        private static File createDateDirectory(Activity activity) {
+            if (activity == null || activity.getExternalCacheDir() == null) {
+                return null;
+            }
+            File baseDir = new File(activity.getExternalCacheDir(), ".v");
+            if (!((baseDir.exists() && baseDir.isDirectory()) || baseDir.mkdirs())) {
+                return null;
+            }
+            String dateFolderName = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date());
+            File dateDir = new File(baseDir, dateFolderName);
+            if ((dateDir.exists() && dateDir.isDirectory()) || dateDir.mkdirs()) {
+                return dateDir;
+            }
+            return null;
         }
 
         /**

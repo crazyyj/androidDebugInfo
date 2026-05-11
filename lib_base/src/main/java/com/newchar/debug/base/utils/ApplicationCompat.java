@@ -1,4 +1,4 @@
-package com.newchar.debug.base.helper;
+package com.newchar.debug.base.utils;
 
 import android.content.Context;
 import android.os.Handler;

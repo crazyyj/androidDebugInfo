@@ -15,6 +15,10 @@ import java.util.List;
 
 public class PackageUtil {
 
+    public static int hasBuildConfig = 0;
+
+    public Class<Object> buildConfig;
+
     /**
      * 获取ApplicationInfo 或 Activity 节点下的的MetaData数据
      *
@@ -111,5 +115,17 @@ public class PackageUtil {
         return 0;
     }
 
+    private Class<Object> hasBuildConfig(Context context){
+        if (hasBuildConfig > 0) {
+            return null;
+        }
+        try {
+            String configClazzName = context.getPackageName() + ".BuildConfig";
+            buildConfig = (Class<Object>) Class.forName(configClazzName);
+        } catch (Exception e) {
+            hasBuildConfig ++;
+        }
+        return buildConfig;
+    }
 
 }

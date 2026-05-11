@@ -64,6 +64,9 @@ public final class ViewUtils {
                     if (UIUtils.isMainThread()) {
                         ((ViewGroup) viewParent).removeView(host);
                     } else {
+                        if (viewParent == null) {
+                            return;
+                        }
                         host.post(new Runnable() {
                             @Override
                             public void run() {
@@ -104,21 +107,6 @@ public final class ViewUtils {
                 });
             }
         }
-    }
-
-    /**
-     * DebugView的layoutParams
-     *
-     * @return LayoutParams
-     */
-    public static ViewGroup.LayoutParams getDebugViewLayoutParams() {
-        int widthHeight = ViewUtils.getViewContainerWidth();
-        return new ViewGroup.LayoutParams(widthHeight, widthHeight);
-    }
-
-    public static int getViewContainerWidth() {
-        DisplayMetrics outMetrics = Resources.getSystem().getDisplayMetrics();
-        return Math.min(outMetrics.widthPixels, outMetrics.heightPixels) * 4 / 5;
     }
 
 }

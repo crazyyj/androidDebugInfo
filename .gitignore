@@ -3,6 +3,7 @@
 /.build
 /.cxx
 /.idea
+/.trae
 /.codex
 /.vscode
 .DS_Store

@@ -288,7 +288,7 @@ public class SDcardUtil {
 		if (Environment.getExternalStorageState().equals(
 				Environment.MEDIA_MOUNTED)) {
 			File exitFile = new File(file.getAbsoluteFile()
-					+ File.pathSeparator + folder);
+					+ File.pathSeparator + folder, fileName);
 			if (exitFile.exists()) {
 				exitFile.delete();
 			}
