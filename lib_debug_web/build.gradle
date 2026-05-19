@@ -1,0 +1,38 @@
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace 'com.newchar.debug.web'
+    compileSdk rootProject.ext.compileSdkVersion
+
+    defaultConfig {
+        minSdk rootProject.ext.minSdkVersion
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles "consumer-rules.pro"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+}
+
+dependencies {
+    implementation project(':lib_debug_core')
+    api 'com.squareup.okhttp3:okhttp:4.12.0'
+    api 'com.squareup.okhttp3:logging-interceptor:4.12.0'
+    api 'androidx.annotation:annotation:1.7.1'
+    api 'androidx.collection:collection:1.4.2'
+
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+}
