@@ -10,7 +10,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.PopupWindow;
 
-import com.newchar.debug.base.utils.ViewUtils;
+import com.newchar.debug.utils.ViewUtils;
 import com.newchar.debug.api.PluginContext;
 import com.newchar.debug.api.ScreenDisplayPlugin;
 import com.newchar.debug.lifecycle.AppLifecycleManager;
@@ -38,7 +38,7 @@ import java.util.Set;
  * @since 当前版本，（以及描述）
  * @since 迭代版本，（以及描述）
  */
-public class PageTaskTopPlugin extends ScreenDisplayPlugin {
+public class PageUITopPlugin extends ScreenDisplayPlugin {
 
     public static final String TAG_PLUGIN = "Task_Top";
     private static final long FIELD_TICK_INTERVAL_MS = 2000L;
@@ -174,9 +174,9 @@ public class PageTaskTopPlugin extends ScreenDisplayPlugin {
         DebugStackMotion.init();
         // HookInit.init(ctx.getContext());
         // 默认注册插件内部演示字段，确保字段修改链路可直接验证。
-        addWatchField(PageTaskTopPlugin.class, "mFieldTickCount");
-        addWatchField(PageTaskTopPlugin.class, "mFieldTickState");
-        addWatchField(PageTaskTopPlugin.class, "sFieldTickVersion");
+        addWatchField(PageUITopPlugin.class, "mFieldTickCount");
+        addWatchField(PageUITopPlugin.class, "mFieldTickState");
+        addWatchField(PageUITopPlugin.class, "sFieldTickVersion");
         hookDialogAndPopLifecycle();
         startFieldTickLoop();
         registerActivityLifecycle();

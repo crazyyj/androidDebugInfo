@@ -56,20 +56,20 @@ class JvmDeviceMetadataResolver : DeviceMetadataResolver {
 
     private suspend fun readWirelessIp(executor: CommandExecutor, serial: String): String {
         val candidates = listOf(
-            listOf("-s", serial, "shell", "getprop", "dhcp.wlan0.ipaddress"),
-            listOf("-s", serial, "shell", "getprop", "dhcp.wlan1.ipaddress"),
-            listOf("-s", serial, "shell", "getprop", "dhcp.wifi.ipaddress"),
-            listOf("-s", serial, "shell", "ip", "-f", "inet", "addr", "show", "wlan0"),
-            listOf("-s", serial, "shell", "ip", "-f", "inet", "addr", "show", "wlan1"),
-            listOf("-s", serial, "shell", "ip", "-f", "inet", "addr", "show", "wifi0"),
-            listOf("-s", serial, "shell", "ifconfig", "wlan0"),
-            listOf("-s", serial, "shell", "ifconfig", "wlan1"),
-            listOf("-s", serial, "shell", "ip", "route"),
+            listOf("shell", "getprop", "dhcp.wlan0.ipaddress"),
+            listOf("shell", "getprop", "dhcp.wlan1.ipaddress"),
+            listOf("shell", "getprop", "dhcp.wifi.ipaddress"),
+            listOf("shell", "ip", "-f", "inet", "addr", "show", "wlan0"),
+            listOf("shell", "ip", "-f", "inet", "addr", "show", "wlan1"),
+            listOf("shell", "ip", "-f", "inet", "addr", "show", "wifi0"),
+            listOf("shell", "ifconfig", "wlan0"),
+            listOf("shell", "ifconfig", "wlan1"),
+            listOf("shell", "ip", "route"),
         )
         candidates.forEach { command ->
-            val result = executor.adb(*command.drop(1).toTypedArray())
+            val result = executor.adb("-s", serial, *command.toTypedArray())
             val text = result.output.ifBlank { result.error }.trim()
-            val ip = extractIpv4(text)
+            val ip = extractWirelessIp(text, command)
             if (ip.isNotBlank()) {
                 return ip
             }
@@ -92,7 +92,27 @@ class JvmDeviceMetadataResolver : DeviceMetadataResolver {
         return if (result.isSuccess) result.output.trim() else ""
     }
 
-    private fun extractIpv4(text: String): String {
+    private fun extractWirelessIp(text: String, command: List<String>): String {
+        if (text.isBlank()) {
+            return ""
+        }
+        if (command.takeLast(2) == listOf("ip", "route")) {
+            ROUTE_SRC_REGEX.find(text)?.value?.substringAfter("src ")?.let { ip ->
+                if (ip.isNotBlank()) {
+                    return ip
+                }
+            }
+        }
+        IP_ADDR_REGEX.find(text)?.groupValues?.getOrNull(1)?.let { ip ->
+            if (ip.isNotBlank()) {
+                return ip
+            }
+        }
+        IFCONFIG_INET_ADDR_REGEX.find(text)?.groupValues?.getOrNull(1)?.let { ip ->
+            if (ip.isNotBlank()) {
+                return ip
+            }
+        }
         val match = IPV4_REGEX.find(text)
         return match?.value.orEmpty()
     }
@@ -118,6 +138,9 @@ class JvmDeviceMetadataResolver : DeviceMetadataResolver {
     private companion object {
         const val CACHE_TTL_MS = 60_000L
         const val DEFAULT_WIRELESS_PORT = 5555
+        val ROUTE_SRC_REGEX = Regex("""src\s+((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})""")
+        val IP_ADDR_REGEX = Regex("""inet\s+((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})""")
+        val IFCONFIG_INET_ADDR_REGEX = Regex("""inet addr:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})""")
         val IPV4_REGEX = Regex("(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)(\\.(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)){3}")
     }
 }

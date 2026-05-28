@@ -5,15 +5,18 @@ import android.content.Context;
 import android.graphics.Color;
 import android.util.AttributeSet;
 import android.view.Gravity;
+import android.view.ViewGroup;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import com.newchar.debug.base.utils.Prompt;
+import android.widget.Toast;
+
 import com.newchar.debug.api.PluginContext;
 import com.newchar.debug.api.PluginManager;
 import com.newchar.debug.api.ScreenDisplayPlugin;
 import com.newchar.debug.utils.MoveTouchListener;
+import com.newchar.debug.utils.UIUtils;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -27,41 +30,22 @@ import java.util.List;
  */
 public class DebugView extends LinearLayout {
 
-    /**
-     * 当前View的id
-     */
     private static final int VIEW_ID_ROOT_VIEW = View.generateViewId();
-    /**
-     * 复制全部
-     */
     private TextView mCopyView;
     private static final int VIEW_ID_COPY_VIEW = View.generateViewId();
 
-    /**
-     * 折叠
-     */
     private TextView mFoldView;
     private static final int VIEW_ID_FOLD_VIEW = View.generateViewId();
 
-    /*
-     * 停止（停止继续收集Log/日志等信息）
-     */
-//    private TextView mResumePauseView;
-//    private static final int VIEW_ID_STOP_VIEW = View.generateViewId();
-
-    /**
-     * 清空
-     */
     private TextView mClearView;
     private static final int VIEW_ID_CLEAR_VIEW = View.generateViewId();
 
-    /**
-     * 切换日志/系统数据模式
-     */
     private TextView mSwitchModeView;
     private static final int VIEW_ID_SWITCH_MODE_VIEW = View.generateViewId();
 
-//    private LinearLayout mTitleController;
+    private TextView mSizeView;
+    private static final int VIEW_ID_SIZE_VIEW = View.generateViewId();
+
     public static final int BUTTON_PADDING_TOP_BOTTOM = 12;
     public static final int BUTTON_PADDING_LEFT_RIGHT = 10;
 
@@ -69,10 +53,16 @@ public class DebugView extends LinearLayout {
     public static final String TEXT_UNFOLD = "展开";
     public static final String TEXT_COPY = "复制";
     public static final String TEXT_PAUSE = "停止";
-    public static final String TEXT_FRESH = "刷新"; // 强制刷新监控情况
+    public static final String TEXT_FRESH = "刷新";
     public static final String TEXT_RESUME = "恢复";
     public static final String TEXT_CLEAR = "清空";
     public static final String TEXT_SWITCH = "模式";
+
+    private static final int SIZE_MODE_DEFAULT = 0;
+    private static final int SIZE_MODE_90_PERCENT = 1;
+    private static final int SIZE_MODE_MINI = 2;
+
+    private int mSizeMode = SIZE_MODE_DEFAULT;
 
     private final PluginContext mPluginContext = new PluginContext();
     private ScreenDisplayPlugin mCurrentPlugin = null;
@@ -108,37 +98,28 @@ public class DebugView extends LinearLayout {
         initFoldView(context);
         initClearView(context);
         initSwitchModeView(context);
+        initSizeView(context);
 
         titleController.addView(mCopyView);
         titleController.addView(mFoldView);
         titleController.addView(mClearView);
         titleController.addView(mSwitchModeView);
+        titleController.addView(mSizeView);
 
         addView(titleController);
     }
 
-    /**
-     * 清空全部日志, 刷新全部数据
-     *
-     * @param context Context
-     */
     private void initClearView(Context context) {
         mClearView = genTextView(context, VIEW_ID_CLEAR_VIEW);
         mClearView.setText(TEXT_CLEAR);
         mClearView.setOnClickListener(clearView -> {
-            Prompt.show_long("弹出了");
+            Toast.makeText(getContext(), "弹出了", Toast.LENGTH_LONG).show();
         });
         mClearView.setOnLongClickListener(clearView -> {
-            //
             return true;
         });
     }
 
-    /**
-     * 初始化折叠view
-     *
-     * @param context context
-     */
     private void initFoldView(Context context) {
         mFoldView = genTextView(context, VIEW_ID_FOLD_VIEW);
         mFoldView.setText(TEXT_FOLD);
@@ -146,7 +127,6 @@ public class DebugView extends LinearLayout {
 
         });
         mFoldView.setOnLongClickListener(foldView -> {
-//
             return true;
         });
     }
@@ -170,23 +150,80 @@ public class DebugView extends LinearLayout {
             switchNextPlugin();
         });
         mSwitchModeView.setOnLongClickListener(switchMode -> {
-
             return true;
         });
     }
 
+    private void initSizeView(Context context) {
+        mSizeView = genTextView(context, VIEW_ID_SIZE_VIEW);
+        mSizeView.setText("尺寸");
+        mSizeView.setOnClickListener(v -> cycleSizeMode());
+        mSizeView.setOnLongClickListener(v -> {
+            return true;
+        });
+    }
 
+    private void cycleSizeMode() {
+        mSizeMode = (mSizeMode + 1) % 3;
+        applySizeMode();
+    }
 
-    /**
-     * 保存全部Log到cache目录
-     */
+    private void applySizeMode() {
+        if (mSizeView != null) {
+            switch (mSizeMode) {
+                case SIZE_MODE_DEFAULT:
+                    mSizeView.setText("尺寸");
+                    break;
+                case SIZE_MODE_90_PERCENT:
+                    mSizeView.setText("90%");
+                    break;
+                case SIZE_MODE_MINI:
+                    mSizeView.setText("迷你");
+                    break;
+            }
+        }
+
+        int screenWidth = UIUtils.getScreenWidth();
+        int screenHeight = UIUtils.getScreenHeight();
+
+        ViewGroup.LayoutParams lp = getLayoutParams();
+        if (lp == null) {
+            return;
+        }
+
+        switch (mSizeMode) {
+            case SIZE_MODE_DEFAULT:
+                lp.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+                lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+                setPluginAreaVisible(true);
+                break;
+            case SIZE_MODE_90_PERCENT:
+                lp.width = (int) (screenWidth * 0.9);
+                lp.height = (int) (screenHeight * 0.9);
+                setPluginAreaVisible(true);
+                break;
+            case SIZE_MODE_MINI:
+                lp.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+                lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+                setPluginAreaVisible(false);
+                break;
+        }
+
+        setLayoutParams(lp);
+    }
+
+    private void setPluginAreaVisible(boolean visible) {
+        int childCount = getChildCount();
+        for (int i = 1; i < childCount; i++) {
+            View child = getChildAt(i);
+            child.setVisibility(visible ? View.VISIBLE : View.GONE);
+        }
+    }
+
     private void saveLogListViewAllLog() {
 
     }
 
-    /**
-     * 复制全部数据
-     */
     private void copyLogListViewAllLog() {
 
     }
@@ -202,11 +239,6 @@ public class DebugView extends LinearLayout {
         return textView;
     }
 
-    /**
-     * 设置拖动处理器。
-     *
-     * @param moveHandler 拖动处理器
-     */
     public void setMoveHandler(MoveTouchListener.MoveHandler moveHandler) {
         mMoveHandler = moveHandler;
     }
@@ -217,12 +249,10 @@ public class DebugView extends LinearLayout {
         DebugViewStore.attach(this);
         try {
             mPluginContext.mApp = getContext().getApplicationContext();
-            // TitleView区域回调.
             generateTitleController();
         } catch (Exception e) {
             e.printStackTrace();
         }
-        // 内容区域回调.
         loadPlugin();
     }
 
@@ -245,9 +275,6 @@ public class DebugView extends LinearLayout {
 
     private void loadPlugin() {
         Collection<Class<ScreenDisplayPlugin>> allPlugin = PluginManager.getInstance().getAllPlugin();
-        // 是触发事件向下传递, 还是下边提前准备好, 反向设置上来.
-        // 文本样式,还是需要底部提供,以及不同插件 设置的功能 个数, 需要提前准备好, 去下层取. 以及不显示 的使用某些插件的逻辑.
-        // 可以使用 简单的任务处理 做到不阻塞.更快处理. 具体 View 是否是全局数据, 使用插件内部自行实现.
         for (final Class<ScreenDisplayPlugin> screenDisplayPlugin : allPlugin) {
             post(() -> {
                 try {
@@ -278,11 +305,6 @@ public class DebugView extends LinearLayout {
         mPagePlugin.clear();
     }
 
-    /**
-     * 应用指定插件
-     *
-     * @param plugin 插件
-     */
     private void applyPlugin(ScreenDisplayPlugin plugin) {
         if (plugin == null) {
             return;
@@ -291,17 +313,11 @@ public class DebugView extends LinearLayout {
         if (olcCurrentPlugin != null) {
             olcCurrentPlugin.onHide();
         }
-        // 切换插件
         plugin.onShow();
-        // 防止被遮挡
         bringToFront();
-//        setElevation();
         mCurrentPlugin = plugin;
     }
 
-    /**
-     * 展示下一个插件
-     */
     private void switchNextPlugin() {
         if (!mPagePlugin.isEmpty()) {
             if (mCurrentPlugin == null) {

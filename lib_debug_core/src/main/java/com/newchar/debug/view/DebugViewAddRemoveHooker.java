@@ -9,7 +9,8 @@ import android.view.ViewGroup;
 import android.view.Window;
 import android.widget.FrameLayout;
 
-import com.newchar.debug.base.utils.ViewUtils;
+import com.newchar.debug.utils.UIUtils;
+import com.newchar.debug.utils.ViewUtils;
 import com.newchar.debug.api.PluginContext;
 import com.newchar.debug.api.PluginManager;
 import com.newchar.debug.api.ScreenDisplayPlugin;
@@ -67,7 +68,7 @@ public class DebugViewAddRemoveHooker extends DefaultActivityCallback {
      * @return LayoutParams
      */
     private ViewGroup.LayoutParams getDebugViewLayoutParams() {
-        int widthHeight = ViewUtils.getViewContainerWidth();
+        int widthHeight = UIUtils.getScreenWidth();
         return new ViewGroup.LayoutParams(widthHeight, widthHeight);
     }
 

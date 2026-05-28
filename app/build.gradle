@@ -42,13 +42,13 @@ android {
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
-    implementation project(':lib_base')
     implementation project(':lib_debug_core')
     implementation project(':lib_debug_monitor')
     implementation project(':lib_debug_log')
     implementation project(':lib_debug_device')
     implementation project(':lib_debug_touch')
     implementation project(':lib_debug_net')
+    implementation project(':lib_debug_web')
 
     implementation 'androidx.appcompat:appcompat:1.7.1'
 }

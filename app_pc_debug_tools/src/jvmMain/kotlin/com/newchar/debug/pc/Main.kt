@@ -28,7 +28,7 @@ fun main() = application {
 
     Window(
         onCloseRequest = ::exitApplication,
-        title = "PC Debug Tools",
+        title = "阿牛群控",
         state = windowState,
     ) {
         MenuBar {

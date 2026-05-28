@@ -1,4 +1,4 @@
-package com.newchar.debug.base.utils;
+package com.newchar.debug.utils;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;

@@ -4,7 +4,6 @@ include ':app_pc_debug_tools'
 
 // 核心库
 include ':lib_debug_core'
-include ':lib_base'
 include ':lib_debug'
 
 // 扩展图

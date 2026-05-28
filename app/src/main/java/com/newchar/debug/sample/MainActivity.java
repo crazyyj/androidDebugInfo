@@ -81,6 +81,13 @@ public class MainActivity extends AppCompatActivity {
                 startActivity(new Intent(MainActivity.this, DiskOperationDemoActivity.class));
             }
         });
+
+        findViewById(R.id.btn_open_oschina_api_demo).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, OschinaApiActivity.class));
+            }
+        });
     }
 
     private void showFragment(Fragment fragment) {

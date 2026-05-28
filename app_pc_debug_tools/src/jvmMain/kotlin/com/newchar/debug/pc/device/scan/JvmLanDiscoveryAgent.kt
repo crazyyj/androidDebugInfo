@@ -114,13 +114,22 @@ class JvmLanDiscoveryAgent : LanDiscoveryAgent {
         }
 
         val localHost = ipValue
-        val maxEnd = min(end.toLong(), start.toLong() + maxHostsPerSubnet - 1).toInt()
-        val hosts = (start..maxEnd)
+        val totalHosts = end - start + 1
+        val scanStart = if (totalHosts <= maxHostsPerSubnet) {
+            start
+        } else {
+            val halfWindow = maxHostsPerSubnet / 2
+            val localWindowStart = (localHost - halfWindow).coerceAtLeast(start)
+            val localWindowEnd = min(end.toLong(), localWindowStart.toLong() + maxHostsPerSubnet - 1).toInt()
+            (localWindowEnd - maxHostsPerSubnet + 1).coerceAtLeast(start)
+        }
+        val scanEnd = min(end.toLong(), scanStart.toLong() + maxHostsPerSubnet - 1).toInt()
+        val hosts = (scanStart..scanEnd)
             .filterNot { it == localHost }
             .map(::intToIpv4)
 
         return Ipv4Subnet(
-            label = "${intToIpv4(network)}/$prefixLength",
+            label = "${intToIpv4(network)}/$prefixLength near ${intToIpv4(localHost)}",
             hosts = hosts,
         )
     }

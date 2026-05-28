@@ -9,7 +9,7 @@ import android.widget.TextView;
 
 import com.newchar.debug.api.PluginContext;
 import com.newchar.debug.api.ScreenDisplayPlugin;
-import com.newchar.debug.base.utils.ViewUtils;
+import com.newchar.debug.utils.ViewUtils;
 import com.newchar.debug.device.disk.DiskMonitor;
 import com.newchar.debug.device.disk.DiskSnapshot;
 

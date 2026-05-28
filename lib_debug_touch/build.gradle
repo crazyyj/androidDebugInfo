@@ -28,7 +28,6 @@ android {
 
 dependencies {
 
-    compileOnly(project(":lib_base"))
     compileOnly(project(":lib_debug_core"))
     implementation 'androidx.appcompat:appcompat:1.7.1'
 

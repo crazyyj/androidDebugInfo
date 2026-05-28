@@ -10,7 +10,7 @@ import android.widget.ArrayAdapter;
 import android.widget.ListView;
 import android.widget.PopupWindow;
 
-import com.newchar.debug.base.utils.ViewUtils;
+import com.newchar.debug.utils.ViewUtils;
 import com.newchar.debug.api.PluginContext;
 import com.newchar.debug.api.ScreenDisplayPlugin;
 import com.newchar.debug.utils.HandleWrapper;

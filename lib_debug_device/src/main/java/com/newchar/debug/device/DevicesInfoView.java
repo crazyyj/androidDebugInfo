@@ -15,38 +15,19 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-import com.newchar.debug.base.utils.ViewUtils;
+import com.newchar.debug.utils.ViewUtils;
 
 import java.lang.ref.WeakReference;
 
-/**
- * @author newChar
- * date 2023/7/30
- * @since 显示当前设备信息的滚动View
- * @since 迭代版本，（以及描述）
- */
 public class DevicesInfoView extends ScrollView {
 
-    /**
-     * 自身id
-     */
     public static final int ID_VIEW_SCROLL = generateViewId();
-
-    /**
-     * 内部唯一child LinearLayout id
-     */
     public static final int ID_VIEW_SCROLL_CHILD = generateViewId();
-
     public static final int ID_VIEW_CPU = generateViewId();
-
     public static final int ID_VIEW_MEMORY = generateViewId();
-
     public static final int ID_VIEW_DEVICES = generateViewId();
-
     public static final int ID_VIEW_SCREEN = generateViewId();
-
     public static final int ID_VIEW_STORAGE = generateViewId();
-
     public static final int ID_VIEW_FILE = generateViewId();
 
     private static final float TITLE_TEXT_SIZE_SP = 16f;
@@ -109,7 +90,6 @@ public class DevicesInfoView extends ScrollView {
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
-        // 添加childView
         if (mLinearChildView == null) {
             mLinearChildView = new LinearLayout(getContext());
             mLinearChildView.setId(ID_VIEW_SCROLL_CHILD);

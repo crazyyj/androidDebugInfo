@@ -1,4 +1,4 @@
-package com.newchar.debug.base.adapter;
+package com.newchar.debug.adapter;
 
 import java.util.ArrayList;
 import java.util.List;

@@ -1,4 +1,4 @@
-package com.newchar.debug.base.utils;
+package com.newchar.debug.utils;
 
 /**
  * @author newChar

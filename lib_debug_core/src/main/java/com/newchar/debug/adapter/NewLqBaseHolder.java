@@ -1,4 +1,4 @@
-package com.newchar.debug.base.adapter;
+package com.newchar.debug.adapter;
 
 
 import android.view.View;
@@ -18,4 +18,3 @@ public abstract class NewLqBaseHolder<T> implements View.OnClickListener {
 
     public abstract void setData(List<T> data, int position);
 }
-

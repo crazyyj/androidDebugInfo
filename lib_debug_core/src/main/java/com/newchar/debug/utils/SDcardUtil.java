@@ -1,4 +1,4 @@
-package com.newchar.debug.base.utils;
+package com.newchar.debug.utils;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;

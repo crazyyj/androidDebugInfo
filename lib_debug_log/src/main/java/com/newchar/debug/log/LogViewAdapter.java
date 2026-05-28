@@ -14,7 +14,8 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.newchar.debug.base.utils.ViewUtils;
+import com.newchar.debug.utils.UIUtils;
+import com.newchar.debug.utils.ViewUtils;
 import com.newchar.debug.utils.DebugUtils;
 //import com.newchar.debug.utils.DebugUtils;
 //import com.newchar.debug.view.DebugView;
@@ -389,7 +390,7 @@ public class LogViewAdapter extends BaseAdapter implements AbsListView.OnScrollL
 
                 if (numColumns < 3) {
                     ViewUtils.setWidthHeight(mImageContainerView,
-                            ViewUtils.getViewContainerWidth() / 3 * 2 - ItemLogImageView.HORIZONTAL_SPACING * 2,
+                            UIUtils.getScreenWidth() / 3 * 2 - ItemLogImageView.HORIZONTAL_SPACING * 2,
                             AbsListView.LayoutParams.WRAP_CONTENT);
                 } else {
                     ViewUtils.setWidthHeight(mImageContainerView,
