@@ -4,8 +4,6 @@ import android.app.Dialog;
 import android.util.Log;
 import android.widget.PopupWindow;
 
-import com.swift.sandhook.hook.HookMethod.HookParam;
-
 import java.lang.reflect.Method;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -123,7 +121,7 @@ public final class WindowHookManager {
 
         SandHookManager.hookMethod(showMethod, new SandHookManager.HookWrapper() {
             @Override
-            protected void onBeforeHook(HookParam param) throws Throwable {
+            protected void onBeforeHook(SandHookManager.HookParam param) throws Throwable {
                 Object thisObject = param.thisObject;
                 if (thisObject instanceof PopupWindow) {
                     PopupWindow popupWindow = (PopupWindow) thisObject;
@@ -146,7 +144,7 @@ public final class WindowHookManager {
 
         SandHookManager.hookMethod(dismissMethod, new SandHookManager.HookWrapper() {
             @Override
-            protected void onBeforeHook(HookParam param) throws Throwable {
+            protected void onBeforeHook(SandHookManager.HookParam param) throws Throwable {
                 Object thisObject = param.thisObject;
                 if (thisObject instanceof PopupWindow) {
                     PopupWindow popupWindow = (PopupWindow) thisObject;
@@ -169,7 +167,7 @@ public final class WindowHookManager {
 
         SandHookManager.hookMethod(showMethod, new SandHookManager.HookWrapper() {
             @Override
-            protected void onBeforeHook(HookParam param) throws Throwable {
+            protected void onBeforeHook(SandHookManager.HookParam param) throws Throwable {
                 Object thisObject = param.thisObject;
                 if (thisObject instanceof Dialog) {
                     Dialog dialog = (Dialog) thisObject;
@@ -192,7 +190,7 @@ public final class WindowHookManager {
 
         SandHookManager.hookMethod(dismissMethod, new SandHookManager.HookWrapper() {
             @Override
-            protected void onBeforeHook(HookParam param) throws Throwable {
+            protected void onBeforeHook(SandHookManager.HookParam param) throws Throwable {
                 Object thisObject = param.thisObject;
                 if (thisObject instanceof Dialog) {
                     Dialog dialog = (Dialog) thisObject;

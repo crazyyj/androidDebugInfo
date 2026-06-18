@@ -9,7 +9,6 @@ public final class DebugNetConfig {
 
     public static final String KEYSTORE_TYPE_PKCS12 = "PKCS12";
     public static final String KEYSTORE_TYPE_BKS = "BKS";
-    public static final String KEYSTORE_TYPE_PKCS12 = "PKCS12";
 
     private final boolean httpDecodeEnabled;
     private final boolean httpsDecodeEnabled;
@@ -24,7 +23,7 @@ public final class DebugNetConfig {
         this.certificatePath = safeTrim(builder.certificatePath);
         this.certificatePassword = builder.certificatePassword == null ? "" : builder.certificatePassword;
         this.keystoreType = normalizeKeystoreType(builder.keystoreType);
-        this.maxPayloadBytes = builder.maxPayloadBytes <= 0 ? 64 * 1024 : builder.maxPayloadBytes;
+        this.maxPayloadBytes = builder.maxPayloadBytes > 0 ? builder.maxPayloadBytes : 64 * 1024;
     }
 
     public static DebugNetConfig defaultConfig() {
@@ -128,6 +127,11 @@ public final class DebugNetConfig {
 
         public Builder setKeystoreType(String type) {
             this.keystoreType = type != null ? type : KEYSTORE_TYPE_PKCS12;
+            return this;
+        }
+
+        public Builder setMaxPayloadBytes(int bytes) {
+            this.maxPayloadBytes = bytes > 0 ? bytes : 64 * 1024;
             return this;
         }
 
