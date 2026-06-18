@@ -14,7 +14,7 @@ import com.newchar.debug.monitor.jvmti.DebugStackMotion;
 import com.newchar.debug.monitor.jvmti.DebugStackMotionAgent;
 import com.newchar.debug.monitor.jvmti.DebugStackMotionCallback;
 import com.newchar.debug.plugin.MethodFieldMonitorPlugin;
-import com.newchar.debug.plugin.PageTaskTopPlugin;
+import com.newchar.debug.plugin.PageUITopPlugin;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -56,10 +56,10 @@ public class DebugMonitorActivity extends AppCompatActivity {
         adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, eventLogs);
         listView.setAdapter(adapter);
 
-        PageTaskTopPlugin.clearWatchFields();
-        PageTaskTopPlugin.addWatchField(DebugMonitorActivity.class, "monitorCount");
-        PageTaskTopPlugin.addWatchField(DebugMonitorActivity.class, "monitorState");
-        PageTaskTopPlugin.addWatchField(DebugMonitorActivity.class, "sMonitorVersion");
+        PageUITopPlugin.clearWatchFields();
+        PageUITopPlugin.addWatchField(DebugMonitorActivity.class, "monitorCount");
+        PageUITopPlugin.addWatchField(DebugMonitorActivity.class, "monitorState");
+        PageUITopPlugin.addWatchField(DebugMonitorActivity.class, "sMonitorVersion");
 
         MethodFieldMonitorPlugin.addWatchClassPrefix("com.newchar.debug.monitor");
         MethodFieldMonitorPlugin.addWatchMethod(DebugMonitorActivity.class, "onCreate");

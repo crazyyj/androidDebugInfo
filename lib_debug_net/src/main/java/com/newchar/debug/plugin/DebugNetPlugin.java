@@ -16,8 +16,8 @@ import android.widget.ListView;
 import android.widget.Spinner;
 import android.widget.TextView;
 
-import com.newchar.debug.base.utils.KVUtil;
-import com.newchar.debug.base.utils.ViewUtils;
+import com.newchar.debug.utils.KVUtil;
+import com.newchar.debug.utils.ViewUtils;
 import com.newchar.debug.api.PluginContext;
 import com.newchar.debug.api.ScreenDisplayPlugin;
 import com.newchar.debug.net.DebugNetConfig;

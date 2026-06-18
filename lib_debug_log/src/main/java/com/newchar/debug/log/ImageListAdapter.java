@@ -7,7 +7,8 @@ import android.view.ViewGroup;
 import android.widget.BaseAdapter;
 import android.widget.ImageView;
 
-import com.newchar.debug.base.utils.ViewUtils;
+import com.newchar.debug.utils.UIUtils;
+import com.newchar.debug.utils.ViewUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -85,7 +86,7 @@ class ImageListAdapter extends BaseAdapter {
         itemImageView.setId(ImageListAdapter.ID_VIEW_IMAGE);
         itemImageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
         ViewGroup.LayoutParams layoutParams = new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewUtils.getViewContainerWidth() / 4);
+                ViewGroup.LayoutParams.MATCH_PARENT, UIUtils.getScreenWidth() / 4);
         itemImageView.setLayoutParams(layoutParams);
         return itemImageView;
     }

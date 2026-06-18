@@ -28,6 +28,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -36,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -104,11 +106,10 @@ fun AppContent(
     var manualDeviceHistory by remember { mutableStateOf(emptyList<String>()) }
     var toastMessage by remember { mutableStateOf<String?>(null) }
     var adbStatusMessage by remember { mutableStateOf<String?>(null) }
-    var packageLoading by remember { mutableStateOf(false) }
-    var packageError by remember { mutableStateOf<String?>(null) }
-    var packageList by remember { mutableStateOf(emptyList<InstalledAppInfo>()) }
     var wirelessPromptDevice by remember { mutableStateOf<DeviceInfo?>(null) }
     var showLogcatCollector by remember { mutableStateOf(false) }
+    val manuallyDisconnected = remember { mutableStateMapOf<String, DeviceInfo>() }
+    var deleteConfirmDevice by remember { mutableStateOf<DeviceInfo?>(null) }
 
     val scope = rememberCoroutineScope()
     val settingsStore = remember { DesktopAppSettingsStore() }
@@ -145,11 +146,36 @@ fun AppContent(
             externalScope = scope,
             deviceMetadataResolver = JvmDeviceMetadataResolver(),
             lanDiscoveryAgent = JvmLanDiscoveryAgent(),
+            knownEndpointProvider = { manualDeviceHistory },
         )
     }
     val effectiveAdbPath = remember(executor, adbExecutablePath) { executor.resolveAdbExecutablePath() }
     val scanState by scanManager.state.collectAsState()
-    val deviceList = scanState.devices
+    val scannedDevices = scanState.devices
+
+    val deviceList = remember(scannedDevices, manuallyDisconnected.toMap()) {
+        val scannedIds = scannedDevices.mapTo(mutableSetOf()) { it.id }
+        val retainedDisconnected = manuallyDisconnected.values
+            .filter { it.id !in scannedIds }
+            .map { it.copy(isManuallyDisconnected = true) }
+        val updatedScanned = scannedDevices.map { device ->
+            if (manuallyDisconnected.containsKey(device.id)) {
+                device.copy(isManuallyDisconnected = true)
+            } else {
+                device
+            }
+        }
+        updatedScanned + retainedDisconnected
+    }
+
+    val effectiveSelectedDevice = remember(selectedDevice, manuallyDisconnected.toMap()) {
+        val dev = selectedDevice ?: return@remember null
+        if (manuallyDisconnected.containsKey(dev.id)) {
+            dev.copy(isManuallyDisconnected = true)
+        } else {
+            dev.copy(isManuallyDisconnected = false)
+        }
+    }
 
     LaunchedEffect(effectiveAdbPath) {
         val versionResult = executor.adb("version")
@@ -188,33 +214,6 @@ fun AppContent(
     LaunchedEffect(deviceList, selectedDevice) {
         if (selectedDevice != null && deviceList.none { it.id == selectedDevice?.id }) {
             selectedDevice = null
-        }
-    }
-
-    LaunchedEffect(selectedDevice?.id, selectedDevice?.status, selectedDevice?.isRetainedOffline) {
-        val device = selectedDevice
-        if (device == null) {
-            packageLoading = false
-            packageError = null
-            packageList = emptyList()
-            return@LaunchedEffect
-        }
-        packageList = packageCache[device.id].orEmpty()
-        if (device.isRetainedOffline || device.status != "device") {
-            packageLoading = false
-            packageError = if (packageList.isEmpty()) "当前设备不在线，无法刷新应用列表。" else null
-            return@LaunchedEffect
-        }
-        packageLoading = true
-        packageError = null
-        val result = runCatching { PackageInspector.loadInstalledApps(executor, device.id) }
-        result.onSuccess { apps ->
-            packageList = apps
-            packageCache[device.id] = apps
-            packageLoading = false
-        }.onFailure { throwable ->
-            packageLoading = false
-            packageError = throwable.message ?: "获取应用列表失败"
         }
     }
 
@@ -317,6 +316,37 @@ fun AppContent(
                             device = device,
                             selected = isSelected,
                             onClick = { selectedDevice = device },
+                            onDisconnect = { deviceId ->
+                                scope.launch {
+                                    val result = executor.adb("disconnect", deviceId)
+                                    val deviceToRetain = deviceList.find { it.id == deviceId }
+                                    if (deviceToRetain != null) {
+                                        manuallyDisconnected[deviceId] = deviceToRetain
+                                    }
+                                    toastMessage = if (result.isSuccess) "已断开: $deviceId" else "断开失败: ${result.error.ifBlank { result.output }}"
+                                    scanManager.refreshNow()
+                                }
+                            },
+                            onReconnect = { device ->
+                                scope.launch {
+                                    val endpoint = if (device.isNetworkDevice) device.id else device.wirelessEndpoint
+                                    if (endpoint.isNotBlank()) {
+                                        val result = executor.adb("connect", endpoint)
+                                        val output = result.output.ifBlank { result.error }
+                                        val success = result.isSuccess || output.contains("connected to", ignoreCase = true) || output.contains("already connected to", ignoreCase = true)
+                                        if (success) {
+                                            manuallyDisconnected.remove(device.id)
+                                            toastMessage = "已连接: $endpoint"
+                                            scanManager.refreshNow()
+                                        } else {
+                                            toastMessage = "连接失败: ${output.ifBlank { endpoint }}"
+                                        }
+                                    } else {
+                                        toastMessage = "无法重连：缺少连接端点"
+                                    }
+                                }
+                            },
+                            onDelete = { deleteConfirmDevice = it },
                         )
                     }
                 }
@@ -328,56 +358,118 @@ fun AppContent(
             color = AppTheme.border,
         )
 
-        DeviceDetailPanel(
-            modifier = Modifier.weight(1f),
-            device = selectedDevice,
-            packages = packageList,
-            packageLoading = packageLoading,
-            packageError = packageError,
-            recentChanges = scanState.recentChanges,
-            mdnsServices = scanState.mdnsServices,
-            recentMdnsMessages = scanState.recentMdnsMessages,
-            recentLanMessages = scanState.recentLanMessages,
-            scannedLanSubnets = scanState.scannedLanSubnets,
-            discoveredLanEndpoints = scanState.discoveredLanEndpoints,
-            onConnectWireless = { device ->
-                scope.launch {
-                    val endpoint = device.wirelessEndpoint
-                    if (endpoint.isBlank()) {
-                        toastMessage = "未获取到无线端口"
-                        return@launch
-                    }
-                    val result = executor.adb("connect", endpoint)
-                    val output = result.output.ifBlank { result.error }
-                    val success = result.isSuccess ||
-                        output.contains("connected to", ignoreCase = true) ||
-                        output.contains("already connected to", ignoreCase = true)
-                    toastMessage = if (success) "无线连接成功: $endpoint" else output.ifBlank { "无线连接失败: $endpoint" }
-                    if (success) {
-                        wirelessPromptDevice = null
-                        scanManager.refreshNow()
+        Box(modifier = Modifier.weight(1f)) {
+            if (deviceList.isEmpty() && effectiveSelectedDevice == null) {
+                DeviceDetailPanel(
+                    device = null,
+                    packages = emptyList(),
+                    packageLoading = false,
+                    packageError = null,
+                    recentChanges = scanState.recentChanges,
+                    mdnsServices = scanState.mdnsServices,
+                    recentMdnsMessages = scanState.recentMdnsMessages,
+                    recentLanMessages = scanState.recentLanMessages,
+                    scannedLanSubnets = scanState.scannedLanSubnets,
+                    discoveredLanEndpoints = scanState.discoveredLanEndpoints,
+                    onConnectWireless = {},
+                    onEnableWirelessAdb = {},
+                )
+            } else {
+                deviceList.forEach { device ->
+                    val isVisible = selectedDevice?.id == device.id
+                    Box(modifier = Modifier.fillMaxSize().then(if (isVisible) Modifier else Modifier.graphicsLayer { alpha = 0f })) {
+                        DeviceDetailPanel(
+                            device = device,
+                            executor = executor,
+                            packageCache = packageCache,
+                            isVisible = isVisible,
+                            recentChanges = scanState.recentChanges,
+                            mdnsServices = scanState.mdnsServices,
+                            recentMdnsMessages = scanState.recentMdnsMessages,
+                            recentLanMessages = scanState.recentLanMessages,
+                            scannedLanSubnets = scanState.scannedLanSubnets,
+                            discoveredLanEndpoints = scanState.discoveredLanEndpoints,
+                            onConnectWireless = { dev ->
+                                scope.launch {
+                                    val endpoint = dev.wirelessEndpoint
+                                    if (endpoint.isBlank()) {
+                                        toastMessage = "未获取到无线端口"
+                                        return@launch
+                                    }
+                                    val result = executor.adb("connect", endpoint)
+                                    val output = result.output.ifBlank { result.error }
+                                    val success = result.isSuccess ||
+                                        output.contains("connected to", ignoreCase = true) ||
+                                        output.contains("already connected to", ignoreCase = true)
+                                    toastMessage = if (success) "无线连接成功: $endpoint" else output.ifBlank { "无线连接失败: $endpoint" }
+                                    if (success) {
+                                        manualDeviceHistory = (listOf(endpoint) + manualDeviceHistory)
+                                            .map(String::trim)
+                                            .filter(String::isNotBlank)
+                                            .distinct()
+                                            .take(8)
+                                        settingsStore.save(
+                                            AppSettings(
+                                                adbExecutablePath = adbExecutablePath,
+                                                manualDeviceHistory = manualDeviceHistory,
+                                            )
+                                        )
+                                        wirelessPromptDevice = null
+                                        scanManager.refreshNow()
+                                    }
+                                }
+                            },
+                            onEnableWirelessAdb = { dev ->
+                                scope.launch {
+                                    val result = executor.adb("-s", dev.id, "tcpip", "5555")
+                                    val output = result.output.ifBlank { result.error }
+                                    val success = result.isSuccess ||
+                                        output.contains("restarting in TCP mode port: 5555", ignoreCase = true) ||
+                                        output.contains("tcp mode port: 5555", ignoreCase = true)
+                                    toastMessage = if (success) {
+                                        "${dev.model.ifBlank { dev.id }} 已切到 adb tcpip 5555"
+                                    } else {
+                                        output.ifBlank { "切换 adb tcpip 5555 失败" }
+                                    }
+                                    if (success) {
+                                        kotlinx.coroutines.delay(1200L)
+                                        val endpoint = when {
+                                            dev.wirelessIp.isNotBlank() -> "${dev.wirelessIp}:5555"
+                                            dev.wirelessEndpoint.isNotBlank() -> dev.wirelessEndpoint
+                                            else -> ""
+                                        }
+                                        if (endpoint.isNotBlank()) {
+                                            manualDeviceHistory = (listOf(endpoint) + manualDeviceHistory)
+                                                .map(String::trim)
+                                                .filter(String::isNotBlank)
+                                                .distinct()
+                                                .take(8)
+                                            settingsStore.save(
+                                                AppSettings(
+                                                    adbExecutablePath = adbExecutablePath,
+                                                    manualDeviceHistory = manualDeviceHistory,
+                                                )
+                                            )
+                                            val connectResult = executor.adb("connect", endpoint)
+                                            val connectOutput = connectResult.output.ifBlank { connectResult.error }
+                                            val connectSuccess = connectResult.isSuccess ||
+                                                connectOutput.contains("connected to", ignoreCase = true) ||
+                                                connectOutput.contains("already connected to", ignoreCase = true)
+                                            toastMessage = if (connectSuccess) {
+                                                "无线连接成功: $endpoint"
+                                            } else {
+                                                connectOutput.ifBlank { "无线连接失败: $endpoint" }
+                                            }
+                                        }
+                                        scanManager.refreshNow()
+                                    }
+                                }
+                            },
+                        )
                     }
                 }
-            },
-            onEnableWirelessAdb = { device ->
-                scope.launch {
-                    val result = executor.adb("-s", device.id, "tcpip", "5555")
-                    val output = result.output.ifBlank { result.error }
-                    val success = result.isSuccess ||
-                        output.contains("restarting in TCP mode port: 5555", ignoreCase = true) ||
-                        output.contains("tcp mode port: 5555", ignoreCase = true)
-                    toastMessage = if (success) {
-                        "${device.model.ifBlank { device.id }} 已切到 adb tcpip 5555"
-                    } else {
-                        output.ifBlank { "切换 adb tcpip 5555 失败" }
-                    }
-                    if (success) {
-                        kotlinx.coroutines.delay(1200L)
-                        scanManager.refreshNow()
-                    }
-                }
-            },
-        )
+            }
+        }
         }
 
         toastMessage?.let { message ->
@@ -477,6 +569,37 @@ fun AppContent(
             )
         }
     }
+
+    deleteConfirmDevice?.let { device ->
+        AppDialog(
+            title = "删除设备",
+            onDismiss = { deleteConfirmDevice = null },
+            confirmText = "删除",
+            dismissText = "取消",
+            onConfirm = {
+                scope.launch {
+                    if (!manuallyDisconnected.containsKey(device.id) && device.status == "device") {
+                        executor.adb("disconnect", device.id)
+                    }
+                    manuallyDisconnected.remove(device.id)
+                    if (selectedDevice?.id == device.id) {
+                        selectedDevice = null
+                    }
+                    deleteConfirmDevice = null
+                    toastMessage = "已删除: ${device.model.ifBlank { device.id }}"
+                    scanManager.refreshNow()
+                }
+            },
+            onDismissButton = { deleteConfirmDevice = null },
+        ) {
+            AppText(
+                "确定删除设备「${device.model.ifBlank { device.id }}」？",
+                style = BodyTextStyle.copy(fontWeight = FontWeight.Medium),
+            )
+            Spacer(Modifier.height(8.dp))
+            AppText("删除后将从列表中移除此设备。如果设备仍在线，下次扫描会重新发现。", style = HintTextStyle)
+        }
+    }
 }
 
 @Composable
@@ -484,17 +607,24 @@ private fun DeviceCard(
     device: DeviceInfo,
     selected: Boolean,
     onClick: () -> Unit,
+    onDisconnect: (String) -> Unit,
+    onReconnect: (DeviceInfo) -> Unit,
+    onDelete: (DeviceInfo) -> Unit,
 ) {
+    val manuallyDisconnected = device.isManuallyDisconnected
     val bgColor = when {
+        manuallyDisconnected -> Color(0xFFE8E8E8)
         selected -> AppTheme.accentSoft
         device.isRetainedOffline -> Color(0xFFF7F2E8)
         else -> AppTheme.panel
     }
     val borderColor = when {
+        manuallyDisconnected -> Color(0xFFBDBDBD)
         selected -> AppTheme.accent
         device.isRetainedOffline -> Color(0xFFD2B48C)
         else -> AppTheme.border
     }
+    val contentAlpha = if (manuallyDisconnected) 0.45f else 1f
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -505,33 +635,64 @@ private fun DeviceCard(
             .padding(12.dp),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            AppText(
-                text = device.model.ifEmpty { device.id },
-                style = BodyTextStyle.copy(fontWeight = FontWeight.SemiBold),
-                maxLines = 1,
-            )
-            AppText(
-                text = "ID: ${device.id}",
-                style = HintTextStyle.copy(color = AppTheme.textSecondary),
-                maxLines = 1,
-            )
-            AppText(
-                text = if (device.isNetworkDevice) "State: ${device.status} · Wi-Fi" else "State: ${device.status} · USB",
-                style = HintTextStyle,
-                maxLines = 1,
-            )
-            if (device.isRetainedOffline && device.wirelessEndpoint.isNotBlank()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f).graphicsLayer { alpha = contentAlpha }) {
+                    AppText(
+                        text = device.model.ifEmpty { device.id },
+                        style = BodyTextStyle.copy(fontWeight = FontWeight.SemiBold),
+                        maxLines = 1,
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (manuallyDisconnected) {
+                        AppSmallButton(
+                            text = "连接",
+                            onClick = { onReconnect(device) },
+                        )
+                    } else if (device.status == "device" && !device.isRetainedOffline) {
+                        AppSmallOutlinedButton(
+                            text = "断开",
+                            onClick = { onDisconnect(device.id) },
+                        )
+                    }
+                    AppSmallOutlinedButton(
+                        text = "✕",
+                        onClick = { onDelete(device) },
+                        textColor = AppTheme.danger,
+                        borderColor = AppTheme.danger.copy(alpha = 0.4f),
+                    )
+                }
+            }
+            Column(modifier = Modifier.graphicsLayer { alpha = contentAlpha }) {
                 AppText(
-                    text = "Wireless: ${device.wirelessEndpoint}",
-                    style = HintTextStyle.copy(color = AppTheme.accent),
+                    text = "ID: ${device.id}",
+                    style = HintTextStyle.copy(color = AppTheme.textSecondary),
                     maxLines = 1,
                 )
-            }
-            if (device.product.isNotEmpty()) {
                 AppText(
-                    text = "Product: ${device.product}",
-                    style = HintTextStyle.copy(color = AppTheme.accent),
+                    text = if (manuallyDisconnected) "State: 已手动断开"
+                    else if (device.isNetworkDevice) "State: ${device.status} · Wi-Fi"
+                    else "State: ${device.status} · USB",
+                    style = HintTextStyle,
+                    maxLines = 1,
                 )
+                if (device.isRetainedOffline && device.wirelessEndpoint.isNotBlank()) {
+                    AppText(
+                        text = "Wireless: ${device.wirelessEndpoint}",
+                        style = HintTextStyle.copy(color = AppTheme.accent),
+                        maxLines = 1,
+                    )
+                }
+                if (device.product.isNotEmpty()) {
+                    AppText(
+                        text = "Product: ${device.product}",
+                        style = HintTextStyle.copy(color = AppTheme.accent),
+                    )
+                }
             }
         }
     }
@@ -541,9 +702,12 @@ private fun DeviceCard(
 private fun DeviceDetailPanel(
     modifier: Modifier = Modifier,
     device: DeviceInfo?,
-    packages: List<InstalledAppInfo>,
-    packageLoading: Boolean,
-    packageError: String?,
+    packages: List<InstalledAppInfo> = emptyList(),
+    packageLoading: Boolean = false,
+    packageError: String? = null,
+    executor: AdbCommandExecutor = AdbCommandExecutor.create(null),
+    packageCache: SnapshotStateMap<String, List<InstalledAppInfo>> = mutableStateMapOf(),
+    isVisible: Boolean = true,
     recentChanges: List<DeviceChangeEvent>,
     mdnsServices: List<AdbMdnsService>,
     recentMdnsMessages: List<String>,
@@ -553,6 +717,37 @@ private fun DeviceDetailPanel(
     onConnectWireless: (DeviceInfo) -> Unit,
     onEnableWirelessAdb: (DeviceInfo) -> Unit,
 ) {
+    val localPackageList = remember { mutableStateOf(emptyList<InstalledAppInfo>()) }
+    val localPackageLoading = remember { mutableStateOf(false) }
+    val localPackageError = remember { mutableStateOf<String?>(null) }
+
+    val effectiveDevice = device
+    val effectivePackages = if (device != null && executor != AdbCommandExecutor.create(null)) localPackageList.value else packages
+    val effectiveLoading = if (device != null && executor != AdbCommandExecutor.create(null)) localPackageLoading.value else packageLoading
+    val effectiveError = if (device != null && executor != AdbCommandExecutor.create(null)) localPackageError.value else packageError
+
+    LaunchedEffect(effectiveDevice?.id, effectiveDevice?.status, effectiveDevice?.isManuallyDisconnected, effectiveDevice?.isRetainedOffline, isVisible) {
+        val dev = effectiveDevice ?: return@LaunchedEffect
+        if (!isVisible) return@LaunchedEffect
+        if (dev.isManuallyDisconnected || dev.isRetainedOffline || dev.status != "device") {
+            localPackageList.value = packageCache[dev.id].orEmpty()
+            localPackageLoading.value = false
+            localPackageError.value = if (localPackageList.value.isEmpty()) "当前设备不在线，无法刷新应用列表。" else null
+            return@LaunchedEffect
+        }
+        localPackageList.value = packageCache[dev.id].orEmpty()
+        localPackageLoading.value = true
+        localPackageError.value = null
+        val result = runCatching { PackageInspector.loadInstalledApps(executor, dev.id) }
+        result.onSuccess { apps ->
+            localPackageList.value = apps
+            packageCache[dev.id] = apps
+            localPackageLoading.value = false
+        }.onFailure { throwable ->
+            localPackageLoading.value = false
+            localPackageError.value = throwable.message ?: "获取应用列表失败"
+        }
+    }
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -583,7 +778,14 @@ private fun DeviceDetailPanel(
 
                 PanelCard {
                     DetailRow(label = "ID", value = device.id)
-                    DetailRow(label = "Status", value = device.status.ifEmpty { "Unknown" })
+                    DetailRow(
+                        label = "Status",
+                        value = when {
+                            device.isManuallyDisconnected -> "已手动断开"
+                            device.isRetainedOffline -> "offline (retained)"
+                            else -> device.status.ifEmpty { "Unknown" }
+                        },
+                    )
                     DetailRow(label = "Transport", value = if (device.isNetworkDevice) "Wi-Fi / TCP" else "USB")
                     DetailRow(label = "Manufacturer", value = device.manufacturer.ifEmpty { "Unknown" })
                     DetailRow(label = "Model", value = device.model.ifEmpty { "Unknown" })
@@ -627,7 +829,7 @@ private fun DeviceDetailPanel(
                     onClick = { /* TODO */ },
                 )
 
-                if (!device.isNetworkDevice && !device.isRetainedOffline && device.status == "device") {
+                if (!device.isNetworkDevice && !device.isRetainedOffline && !device.isManuallyDisconnected && device.status == "device") {
                     AppOutlinedButton(
                         text = "开启 adb tcpip 5555",
                         prefix = "TCP",
@@ -646,9 +848,9 @@ private fun DeviceDetailPanel(
                 }
 
                 PackageListPanel(
-                    packages = packages,
-                    loading = packageLoading,
-                    error = packageError,
+                    packages = effectivePackages,
+                    loading = effectiveLoading,
+                    error = effectiveError,
                 )
 
                 ScanSummaryPanel(
@@ -882,7 +1084,7 @@ private fun ToastHint(
 @Composable
 private fun AboutDialog(onDismiss: () -> Unit) {
     AppDialog(
-        title = "关于 PC Debug Tools",
+        title = "关于 阿牛群控",
         onDismiss = onDismiss,
         confirmText = "确定",
         onConfirm = onDismiss,
@@ -1111,6 +1313,40 @@ private fun AppOutlinedButton(
 }
 
 @Composable
+private fun AppSmallButton(
+    text: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    AppSmallButtonBase(
+        text = text,
+        modifier = modifier,
+        onClick = onClick,
+        background = AppTheme.accent,
+        textColor = Color.White,
+        borderColor = AppTheme.accent,
+    )
+}
+
+@Composable
+private fun AppSmallOutlinedButton(
+    text: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    textColor: Color = AppTheme.textPrimary,
+    borderColor: Color = AppTheme.border,
+) {
+    AppSmallButtonBase(
+        text = text,
+        modifier = modifier,
+        onClick = onClick,
+        background = AppTheme.panel,
+        textColor = textColor,
+        borderColor = borderColor,
+    )
+}
+
+@Composable
 private fun AppButtonBase(
     text: String,
     modifier: Modifier,
@@ -1139,6 +1375,32 @@ private fun AppButtonBase(
             Spacer(Modifier.width(6.dp))
         }
         AppText(text, style = BodyTextStyle.copy(color = textColor, fontWeight = FontWeight.SemiBold))
+    }
+}
+
+@Composable
+private fun AppSmallButtonBase(
+    text: String,
+    modifier: Modifier,
+    onClick: () -> Unit,
+    background: Color,
+    textColor: Color,
+    borderColor: Color,
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(background)
+            .border(1.dp, borderColor, RoundedCornerShape(8.dp))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        AppText(text, style = TextStyle(fontSize = 12.sp, color = textColor, fontWeight = FontWeight.SemiBold))
     }
 }
 

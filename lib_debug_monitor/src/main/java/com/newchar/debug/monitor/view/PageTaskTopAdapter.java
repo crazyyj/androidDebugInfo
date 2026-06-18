@@ -6,9 +6,9 @@ import android.graphics.Color;
 import android.view.View;
 import android.widget.TextView;
 
-import com.newchar.debug.base.adapter.ChildViewHolder;
-import com.newchar.debug.base.adapter.GroupViewHolder;
-import com.newchar.debug.base.adapter.EasyExpandableAdapter;
+import com.newchar.debug.adapter.ChildViewHolder;
+import com.newchar.debug.adapter.GroupViewHolder;
+import com.newchar.debug.adapter.EasyExpandableAdapter;
 
 import java.util.ArrayList;
 import java.util.HashMap;

@@ -15,6 +15,7 @@ data class DeviceInfo(
     val wirelessPort: Int = 0,
     val wirelessEndpoint: String = "",
     val isRetainedOffline: Boolean = false,
+    val isManuallyDisconnected: Boolean = false,
 ) {
     val isNetworkDevice: Boolean
         get() = id.contains(':')

@@ -95,9 +95,27 @@ class DesktopAppSettingsStore {
                 val appData = System.getenv("APPDATA").orEmpty().ifBlank { "$userHome/AppData/Roaming" }
                 "$appData/NewChar/pc-debug-tools"
             }
-            else -> {
+            osName.contains("nix", ignoreCase = true) ||
+            osName.contains("nux", ignoreCase = true) ||
+            osName.contains("aix", ignoreCase = true) -> {
                 val xdgConfig = System.getenv("XDG_CONFIG_HOME").orEmpty().ifBlank { "$userHome/.config" }
                 "$xdgConfig/newchar/pc-debug-tools"
+            }
+            osName.contains("SunOS", ignoreCase = true) ||
+            osName.contains("Solaris", ignoreCase = true) -> {
+                val xdgConfig = System.getenv("XDG_CONFIG_HOME").orEmpty().ifBlank { "$userHome/.config" }
+                "$xdgConfig/newchar/pc-debug-tools"
+            }
+            osName.contains("FreeBSD", ignoreCase = true) ||
+            osName.contains("OpenBSD", ignoreCase = true) ||
+            osName.contains("NetBSD", ignoreCase = true) -> {
+                val xdgConfig = System.getenv("XDG_CONFIG_HOME").orEmpty().ifBlank { "$userHome/.config" }
+                "$xdgConfig/newchar/pc-debug-tools"
+            }
+            else -> {
+                val configHome = System.getenv("XDG_CONFIG_HOME").orEmpty()
+                    .ifBlank { "${userHome}/.config" }
+                "$configHome/newchar/pc-debug-tools"
             }
         }
     }

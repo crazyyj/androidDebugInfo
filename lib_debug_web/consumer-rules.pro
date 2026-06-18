@@ -1,0 +1,2 @@
+-keep class com.newchar.debug.web.** { *; }
+-dontwarn com.newchar.debug.**

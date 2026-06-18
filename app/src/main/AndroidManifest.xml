@@ -51,6 +51,11 @@
             android:exported="false"
             android:label="Disk Operation Demo" />
 
+        <activity
+            android:name=".OschinaApiActivity"
+            android:exported="false"
+            android:label="OSChina API Demo" />
+
     </application>
 
 </manifest>

@@ -32,6 +32,7 @@ class DeviceScanManager(
     private val config: DeviceScanConfig = DeviceScanConfig(),
     private val deviceMetadataResolver: DeviceMetadataResolver? = null,
     private val lanDiscoveryAgent: LanDiscoveryAgent? = null,
+    private val knownEndpointProvider: () -> List<String> = { emptyList() },
 ) {
     private val scope = CoroutineScope(externalScope.coroutineContext + SupervisorJob())
     private val refreshMutex = Mutex()
@@ -187,7 +188,7 @@ class DeviceScanManager(
     }
 
     private suspend fun discoverLanAndConnect() {
-        val retainedResult = connectRetainedWirelessDevices(_state.value)
+        val retainedResult = connectKnownWirelessEndpoints(_state.value)
         val agent = lanDiscoveryAgent
         val lanResult = agent?.discover(executor, _state.value, config) ?: LanDiscoveryResult()
         if (retainedResult.refreshRequested || lanResult.refreshRequested) {
@@ -285,11 +286,16 @@ class DeviceScanManager(
             .sortedWith(compareBy<DeviceInfo> { it.isRetainedOffline }.thenBy { it.model.ifBlank { it.id } })
     }
 
-    private suspend fun connectRetainedWirelessDevices(state: DeviceScanState): LanDiscoveryResult {
-        val retainedDevices = state.devices
+    private suspend fun connectKnownWirelessEndpoints(state: DeviceScanState): LanDiscoveryResult {
+        val retainedEndpoints = state.devices
             .filter { it.isRetainedOffline && it.canTryWirelessConnect }
-            .distinctBy { it.wirelessEndpoint }
-        if (retainedDevices.isEmpty()) {
+            .mapNotNull { it.wirelessEndpoint.takeIf(String::isNotBlank) }
+        val knownEndpointsToRetry = knownEndpointProvider()
+            .map(String::trim)
+            .filter(String::isNotBlank)
+        val endpoints = (retainedEndpoints + knownEndpointsToRetry)
+            .distinct()
+        if (endpoints.isEmpty()) {
             return LanDiscoveryResult()
         }
         val now = Clock.System.now().toEpochMilliseconds()
@@ -298,8 +304,7 @@ class DeviceScanManager(
             .mapTo(mutableSetOf()) { it.id }
         val messages = mutableListOf<String>()
         var refreshRequested = false
-        retainedDevices.forEach { device ->
-            val endpoint = device.wirelessEndpoint
+        endpoints.forEach { endpoint ->
             if (endpoint.isBlank() || endpoint in knownEndpoints) {
                 return@forEach
             }
@@ -320,7 +325,7 @@ class DeviceScanManager(
         return LanDiscoveryResult(
             refreshRequested = refreshRequested,
             messages = messages.take(config.maxRecentLanMessages),
-            discoveredEndpoints = retainedDevices.mapNotNull { it.wirelessEndpoint.takeIf(String::isNotBlank) },
+            discoveredEndpoints = endpoints,
         )
     }
 
@@ -335,11 +340,11 @@ class DeviceScanManager(
 data class DeviceScanConfig(
     val pollIntervalMs: Long = 5_000L,
     val mdnsIntervalMs: Long = 15_000L,
-    val lanScanIntervalMs: Long = 45_000L,
+    val lanScanIntervalMs: Long = 30_000L,
     val trackRestartDelayMs: Long = 1_500L,
     val mdnsReconnectCooldownMs: Long = 30_000L,
     val lanReconnectCooldownMs: Long = 90_000L,
-    val lanProbeTimeoutMs: Int = 250,
+    val lanProbeTimeoutMs: Int = 500,
     val lanMaxParallelHosts: Int = 48,
     val maxLanHostsPerSubnet: Int = 512,
     val maxRecentChanges: Int = 20,

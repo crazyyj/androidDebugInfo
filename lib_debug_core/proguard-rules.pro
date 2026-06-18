@@ -20,8 +20,8 @@
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
 
-# `lib_debug_core` 在库级 release 混淆时会引用 `lib_base` 的工具类。
-# 最终 app 会把 `lib_base` 一起打进来，这里按外部依赖处理，避免库级 R8 中断。
+# `lib_debug_core` 在库级 release 混淆时会引用工具类。
+# 最终 app 会把工具类一起打进来，这里按外部依赖处理，避免库级 R8 中断。
 -dontwarn com.newchar.debug.common.utils.Prompt
 -dontwarn com.newchar.debug.common.utils.UIUtils
 -dontwarn com.newchar.debug.common.utils.ViewUtils

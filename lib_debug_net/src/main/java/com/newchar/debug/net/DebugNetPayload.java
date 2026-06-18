@@ -5,7 +5,7 @@ package com.newchar.debug.net;
  */
 public final class DebugNetPayload {
 
-    private final DebugNetEvent event;
+    private DebugNetEvent event;
 
     public DebugNetPayload(DebugNetEvent event) {
         this.event = event;
@@ -13,5 +13,9 @@ public final class DebugNetPayload {
 
     public DebugNetEvent getEvent() {
         return event;
+    }
+
+    public void setEvent(DebugNetEvent event) {
+        this.event = event;
     }
 }

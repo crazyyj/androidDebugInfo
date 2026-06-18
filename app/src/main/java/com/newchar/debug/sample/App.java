@@ -5,7 +5,7 @@ import android.content.ComponentCallbacks2;
 import android.content.Context;
 import android.content.res.Configuration;
 
-import com.newchar.debug.base.helper.ApplicationCompat;
+import com.newchar.debug.utils.ApplicationCompat;
 
 /**
  * @author newChar

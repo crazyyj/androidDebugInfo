@@ -63,6 +63,13 @@
         android:layout_marginBottom="16dp"
         android:text="打开磁盘操作 Demo" />
 
+    <Button
+        android:id="@+id/btn_open_oschina_api_demo"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:text="打开 OSChina API Demo" />
+
     <FrameLayout
         android:id="@+id/fragment_container"
         android:layout_width="match_parent"

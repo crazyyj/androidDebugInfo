@@ -33,7 +33,6 @@ android {
         debug {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'),
-                    '../lib_base/proguard-rules.pro',
                     '../lib_debug_core/proguard-rules.pro',
                     '../lib_debug_log/proguard-rules.pro',
                     '../lib_debug_device/proguard-rules.pro',
@@ -44,7 +43,6 @@ android {
         release {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
-                    '../lib_base/proguard-rules.pro',
                     '../lib_debug_core/proguard-rules.pro',
                     '../lib_debug_log/proguard-rules.pro',
                     '../lib_debug_device/proguard-rules.pro',
@@ -58,16 +56,12 @@ android {
         main {
             manifest.srcFile 'src/main/AndroidManifest.xml'
             java.srcDirs = [
-                    '../lib_base/src/main/java',
                     '../lib_debug_core/src/main/java',
                     '../lib_debug_log/src/main/java',
                     '../lib_debug_device/src/main/java',
                     '../lib_debug_touch/src/main/java',
                     '../lib_debug_monitor/src/main/java',
                     '../lib_debug_net/src/main/java'
-            ]
-            res.srcDirs = [
-                    '../lib_base/src/main/res'
             ]
         }
     }

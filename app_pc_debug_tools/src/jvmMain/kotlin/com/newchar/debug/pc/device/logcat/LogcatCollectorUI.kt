@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalStdlibApi::class)
+
 package com.newchar.debug.pc.device.logcat
 
 import androidx.compose.animation.AnimatedVisibility

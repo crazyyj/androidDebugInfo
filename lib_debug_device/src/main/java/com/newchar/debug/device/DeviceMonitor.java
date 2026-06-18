@@ -15,18 +15,11 @@ import com.newchar.debug.device.devices.ICPUProvider;
 import com.newchar.debug.device.traffic.TrafficInfo;
 import com.newchar.debug.device.traffic.TrafficMonitor;
 
-/**
- * @author newChar
- * date 2022/7/5
- * @since 1.0 设备帧率，CPU，内存，卡顿等信息记录
- * @since 迭代版本，（以及描述）
- */
 public class DeviceMonitor {
 
     private static final int MSG_UPDATE_CPU = 1;
     private static final int MSG_UPDATE_MEMORY = 2;
     private static final int MSG_UPDATE_STORAGE = 3;
-
     private static final int MSG_UPDATE_TRAFFIC = 4;
     private static final int MSG_UPDATE_FRAME_RATE = 5;
     private static final int MSG_UPDATE_DEVICES_INFO = 6;
@@ -164,18 +157,10 @@ public class DeviceMonitor {
         mTrafficMonitor = new TrafficMonitor(DebugUtils.app());
     }
 
-    /**
-     * 设置设备信息回调。
-     *
-     * @param callback 设备信息回调
-     */
     public void setDevicesInfoCallback(DevicesInfoCallback callback) {
         this.mDevicesInfoCallback = callback;
     }
 
-    /**
-     * 更新全部设备监控信息。
-     */
     public void updateAllInfo() {
         updateCPUInfo();
         updateMemoryInfo();
@@ -185,61 +170,34 @@ public class DeviceMonitor {
         updateFrameRateInfo();
     }
 
-
-    /**
-     * 强制刷新数据
-     */
     public void forceUpdateAllInfo() {
 
     }
 
-    /**
-     * 更新CPU信息
-     */
     public void updateCPUInfo() {
         sendMonitorMessage(MSG_UPDATE_CPU);
     }
 
-    /**
-     * 更新主线程帧率信息
-     */
     public void updateFrameRateInfo() {
         postStartFrameRate();
     }
 
-    /**
-     * 更新内存信息
-     */
     public void updateMemoryInfo() {
         sendMonitorMessage(MSG_UPDATE_MEMORY);
     }
 
-    /**
-     * 更新设备存储信息
-     */
     public void updateStorageInfo() {
         sendMonitorMessage(MSG_UPDATE_STORAGE);
     }
 
-    /**
-     * 更新设备信息, 手机型号。cpu型号。等。
-     */
     public void updateDevicesInfo() {
         sendMonitorMessage(MSG_UPDATE_DEVICES_INFO);
     }
 
-    /**
-     * 更新网络流量信息
-     */
     public void updateTrafficInfo() {
         sendMonitorMessage(MSG_UPDATE_TRAFFIC);
     }
 
-    /**
-     * 发送工作线程采样消息。
-     *
-     * @param what 消息类型
-     */
     private void sendMonitorMessage(int what) {
         if (mDevicesMonitorHandler == null || mDevicesMonitorHandler.hasMessages(what)) {
             return;
@@ -247,12 +205,6 @@ public class DeviceMonitor {
         mDevicesMonitorHandler.sendEmptyMessage(what);
     }
 
-    /**
-     * 延迟发送工作线程采样消息。
-     *
-     * @param what        消息类型
-     * @param delayMillis 延迟时间
-     */
     private void sendMonitorMessageDelayed(int what, long delayMillis) {
         if (mDevicesMonitorHandler == null || mDevicesMonitorHandler.hasMessages(what)) {
             return;
@@ -260,11 +212,6 @@ public class DeviceMonitor {
         mDevicesMonitorHandler.sendEmptyMessageDelayed(what, delayMillis);
     }
 
-    /**
-     * 投递 UI 回调。
-     *
-     * @param runnable UI 回调任务
-     */
     private void postUiCallback(Runnable runnable) {
         if (mDevicesHandler == null || runnable == null) {
             return;
@@ -276,9 +223,6 @@ public class DeviceMonitor {
         });
     }
 
-    /**
-     * 在 UI 线程启动帧率采样。
-     */
     private void postStartFrameRate() {
         if (mDevicesHandler == null) {
             return;
@@ -286,9 +230,6 @@ public class DeviceMonitor {
         mDevicesHandler.post(this::startFrameRateOnUiThread);
     }
 
-    /**
-     * 在 UI 线程停止帧率采样。
-     */
     private void postStopFrameRate() {
         if (mDevicesHandler == null) {
             return;
@@ -296,9 +237,6 @@ public class DeviceMonitor {
         mDevicesHandler.post(this::stopFrameRateOnUiThread);
     }
 
-    /**
-     * 启动帧率采样。
-     */
     private void startFrameRateOnUiThread() {
         if (mFrameRateRunning) {
             return;
@@ -307,9 +245,6 @@ public class DeviceMonitor {
         Choreographer.getInstance().postFrameCallback(mFrameCallback);
     }
 
-    /**
-     * 停止帧率采样。
-     */
     private void stopFrameRateOnUiThread() {
         if (!mFrameRateRunning) {
             return;
@@ -318,46 +253,23 @@ public class DeviceMonitor {
         Choreographer.getInstance().removeFrameCallback(mFrameCallback);
     }
 
-    /**
-     * 外部存储是否存在可用
-     */
     private static boolean isExternalAvailable() {
         return android.os.Environment.MEDIA_MOUNTED.equals(
                 android.os.Environment.getExternalStorageState());
     }
 
-    /**
-     * 获取手机内部总的存储空间
-     *
-     * @return 总大小
-     */
     private static long getDevicesTotalSize() {
         return newDataStatFs().getTotalBytes();
     }
 
-    /**
-     * 获取手机内部可用的存储空间
-     *
-     * @return 总大小
-     */
     private static long getDevicesAvailableSize() {
         return newDataStatFs().getAvailableBytes();
     }
 
-    /**
-     * 获取手机内部可用的存储空间
-     *
-     * @return 总大小
-     */
     private static long getDevicesFreeSize() {
         return newDataStatFs().getFreeBytes();
     }
 
-    /**
-     * 获取手机外部空间总的存储空间
-     *
-     * @return 总大小
-     */
     private static long getExternalAvailableSize() {
         if (!isExternalAvailable()) {
             return -1L;
@@ -365,11 +277,6 @@ public class DeviceMonitor {
         return newExternalStatFs().getAvailableBytes();
     }
 
-    /**
-     * 获取手机外部空间总的存储空间
-     *
-     * @return 总大小
-     */
     private static long getExternalFreeSize() {
         if (!isExternalAvailable()) {
             return -1L;
@@ -377,11 +284,6 @@ public class DeviceMonitor {
         return newExternalStatFs().getFreeBytes();
     }
 
-    /**
-     * 获取手机内部总的存储空间
-     *
-     * @return 总大小
-     */
     private static long getExternalTotalSize() {
         if (!isExternalAvailable()) {
             return -1L;
@@ -401,27 +303,16 @@ public class DeviceMonitor {
 
         private long mLastFrameNanoTime;
 
-//        private static final long MIN_FRAME_TIME_MS = 3 * 16;
-
         @Override
         public void doFrame(long frameTimeNanos) {
             if (!mFrameRateRunning) {
                 return;
             }
-            if (mLastFrameNanoTime != 0) { // mLastFrameNanoTime 上一次绘制的时间
-                long frameInterval = frameTimeNanos - mLastFrameNanoTime; // 计算两帧的时间间隔
-                // 如果时间间隔大于最小时间间隔，3*16ms，小于最大的时间间隔，60*16ms，就认为是掉帧，累加统计该时间
-                // 此处解释一下原因： 因为正常情况下，两帧的间隔都是在16ms以内 ,如果我们统计到的两帧间隔时间大于三倍的普通绘制时间，
-                // 我们就认为是出现了卡顿，之所以设置最大时间间隔，是为了有时候页面不刷新绘制的时候，不做统计处理
+            if (mLastFrameNanoTime != 0) {
+                long frameInterval = frameTimeNanos - mLastFrameNanoTime;
                 float frameInterval_ms = frameInterval / 1000_000F;
                 float frameRate = (1000F / frameInterval_ms);
-//                if (frameInterval_ms > MIN_FRAME_TIME_MS) {
-//                    // 掉帧了。
-//                    callbackFrameDropping(frameInterval_ms, frameRate);
-//                } else {
-                // 正常
                 callbackFrameUpdate(frameInterval_ms, frameRate);
-//                }
             }
             mLastFrameNanoTime = frameTimeNanos;
             if (mFrameRateRunning) {
@@ -437,9 +328,6 @@ public class DeviceMonitor {
 
     };
 
-    /**
-     * 释放设备监控资源。
-     */
     public void release() {
         mDeviceMonitor = null;
         mDevicesInfoCallback = null;

@@ -7,7 +7,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
 
-import com.newchar.debug.base.utils.ViewUtils;
+import com.newchar.debug.utils.UIUtils;
 import com.newchar.debug.utils.DebugUtils;
 import com.newchar.debug.view.DebugView;
 
@@ -127,8 +127,8 @@ class CanFlowState implements IFLowState {
         if (mWindowParams != null) {
             return;
         }
-        int initWindowWidth = ViewUtils.getViewContainerWidth();
-        int initWindowHeight = ViewUtils.getViewContainerWidth();
+        int initWindowWidth = UIUtils.getScreenWidth();
+        int initWindowHeight = UIUtils.getScreenHeight();
         mWindowParams = new WindowManager.LayoutParams(
                 initWindowWidth,
                 initWindowHeight,

@@ -9,6 +9,7 @@ public final class DebugNetConfig {
 
     public static final String KEYSTORE_TYPE_PKCS12 = "PKCS12";
     public static final String KEYSTORE_TYPE_BKS = "BKS";
+    public static final String KEYSTORE_TYPE_PKCS12 = "PKCS12";
 
     private final boolean httpDecodeEnabled;
     private final boolean httpsDecodeEnabled;
@@ -105,33 +106,28 @@ public final class DebugNetConfig {
         private String keystoreType = KEYSTORE_TYPE_PKCS12;
         private int maxPayloadBytes = 64 * 1024;
 
-        public Builder setHttpDecodeEnabled(boolean httpDecodeEnabled) {
-            this.httpDecodeEnabled = httpDecodeEnabled;
+        public Builder setHttpDecodeEnabled(boolean enabled) {
+            this.httpDecodeEnabled = enabled;
             return this;
         }
 
-        public Builder setHttpsDecodeEnabled(boolean httpsDecodeEnabled) {
-            this.httpsDecodeEnabled = httpsDecodeEnabled;
+        public Builder setHttpsDecodeEnabled(boolean enabled) {
+            this.httpsDecodeEnabled = enabled;
             return this;
         }
 
-        public Builder setCertificatePath(String certificatePath) {
-            this.certificatePath = certificatePath;
+        public Builder setCertificatePath(String path) {
+            this.certificatePath = path != null ? path : "";
             return this;
         }
 
-        public Builder setCertificatePassword(String certificatePassword) {
-            this.certificatePassword = certificatePassword;
+        public Builder setCertificatePassword(String password) {
+            this.certificatePassword = password != null ? password : "";
             return this;
         }
 
-        public Builder setKeystoreType(String keystoreType) {
-            this.keystoreType = keystoreType;
-            return this;
-        }
-
-        public Builder setMaxPayloadBytes(int maxPayloadBytes) {
-            this.maxPayloadBytes = maxPayloadBytes;
+        public Builder setKeystoreType(String type) {
+            this.keystoreType = type != null ? type : KEYSTORE_TYPE_PKCS12;
             return this;
         }
 
