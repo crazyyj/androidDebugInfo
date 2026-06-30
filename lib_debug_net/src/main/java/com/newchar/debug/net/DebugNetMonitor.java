@@ -41,9 +41,14 @@ public final class DebugNetMonitor {
         Context appContext = context.getApplicationContext();
         Intent prepareIntent = VpnService.prepare(appContext);
         if (prepareIntent != null) {
-            prepareIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            appContext.startActivity(prepareIntent);
-            return START_NEED_PERMISSION;
+            try {
+                Intent permissionIntent = new Intent(appContext, DebugNetPermissionActivity.class);
+                permissionIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                appContext.startActivity(permissionIntent);
+                return START_NEED_PERMISSION;
+            } catch (Exception e) {
+                return START_FAILED;
+            }
         }
         Intent intent = new Intent(appContext, DebugNetVpnService.class);
         intent.setAction(DebugNetVpnService.ACTION_START);

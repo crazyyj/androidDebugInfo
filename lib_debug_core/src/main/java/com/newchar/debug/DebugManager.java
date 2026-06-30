@@ -107,13 +107,14 @@ public class DebugManager {
             new AppLifecycleManager.AppCloseListener() {
                 @Override
                 public void onAppOpen(Activity firstActivity) {
-                    registerOptionalPlugin("com.newchar.debug.logview.LogViewPlugin");
+                    registerOptionalPlugin("com.newchar.debug.plugin.LogViewPlugin");
                     registerOptionalPlugin("com.newchar.debug.plugin.PageUITopPlugin");
                     registerOptionalPlugin("com.newchar.debug.plugin.MethodFieldMonitorPlugin");
-                    registerOptionalPlugin("com.newchar.debug.touch.plugin.TouchRestorePlugin");
+                    registerOptionalPlugin("com.newchar.debug.plugin.TouchRestorePlugin");
                     registerOptionalPlugin("com.newchar.debug.plugin.DebugNetPlugin");
                     registerOptionalPlugin("com.newchar.debug.plugin.DevicesInfoPlugin");
                     registerOptionalPlugin("com.newchar.debug.plugin.DiskInfoPlugin");
+                    registerOptionalPlugin("com.newchar.debug.plugin.DebugWebPlugin");
                 }
 
                 @Override

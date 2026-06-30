@@ -1,3 +1,3 @@
--keep class com.newchar.debug.web.** { *; }
+-keep class com.newchar.debug.plugin.** { *; }
 -dontwarn com.newchar.debug.**
 -dontwarn com.newchar.debug.common.**

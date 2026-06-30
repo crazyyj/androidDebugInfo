@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace 'com.newchar.debug.web'
+    namespace 'com.newchar.debug.browser'
     compileSdk rootProject.ext.compileSdkVersion
 
     defaultConfig {
