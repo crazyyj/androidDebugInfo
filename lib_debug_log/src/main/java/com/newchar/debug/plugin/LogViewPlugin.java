@@ -35,6 +35,11 @@ public class LogViewPlugin extends ScreenDisplayPlugin {
         return TAG_PLUGIN;
     }
 
+    @Override
+    public String getName() {
+        return "日志视图";
+    }
+
     protected View getView(Context context) {
         generateDataView(context);
         return mDebugLogView;

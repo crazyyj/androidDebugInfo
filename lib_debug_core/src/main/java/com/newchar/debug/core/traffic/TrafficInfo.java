@@ -1,4 +1,4 @@
-package com.newchar.debug.device.traffic;
+package com.newchar.debug.core.traffic;
 
 /**
  * @author newChar

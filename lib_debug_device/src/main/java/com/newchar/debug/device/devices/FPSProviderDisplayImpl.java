@@ -9,7 +9,7 @@ package com.newchar.debug.device.devices;
 class FPSProviderDisplayImpl implements IFPSProvider {
 
     @Override
-    public void getFps(onFpsFreshListener l) {
+    public void getFps(FpsFreshListener l) {
 
     }
 

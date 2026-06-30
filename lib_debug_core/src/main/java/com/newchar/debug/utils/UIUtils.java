@@ -152,6 +152,24 @@ public class UIUtils {
     }
 
     /**
+     * 获取导航栏高度。
+     *
+     * @param context Context
+     * @return 导航栏高度（px），无导航栏或获取失败返回 0
+     */
+    public static int getNavigationBarHeight(Context context) {
+        int result = 0;
+        if (context == null) {
+            return result;
+        }
+        int resourceId = context.getResources().getIdentifier("navigation_bar_height", "dimen", "android");
+        if (resourceId > 0) {
+            result = context.getResources().getDimensionPixelSize(resourceId);
+        }
+        return result;
+    }
+
+    /**
      * 获得状态栏的高度
      *
      * @return 返回状态栏的高度

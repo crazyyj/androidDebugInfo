@@ -1,25 +1,34 @@
 package com.newchar.debug.device.devices;
 
-import java.util.HashMap;
-import java.util.Map;
-
 /**
  * @author newChar
  * date 2023/7/30
- * @since 当前版本，（以及描述）
- * @since 迭代版本，（以及描述）
+ * @since 设备信息 Provider 工厂
  */
-public class DevicesInfoFactory {
+public final class DevicesInfoFactory {
 
-    private static final Map<String, ICPUProvider> factory = new HashMap<>(2);
+    private static final ICPUProvider CPU_INSTANCE = new CPUProviderImpl();
+    private static final IGPUProvider GPU_INSTANCE = new GPUProviderImpl();
+    private static final IFPSProvider FPS_INSTANCE = new FPSProviderDisplayImpl();
+    private static final IPermissionProvider PERMISSION_INSTANCE = new PermissionProviderImpl();
 
-    public static ICPUProvider getCpuInfo(String clazz) {
-        ICPUProvider provider = factory.get(clazz);
-        if (provider == null) {
-            provider = new CPUProviderImpl();
-            factory.put(clazz, provider);
-        }
-        return provider;
+    private DevicesInfoFactory() {
+    }
+
+    public static ICPUProvider getCpuInfo() {
+        return CPU_INSTANCE;
+    }
+
+    public static IGPUProvider getGpuInfo() {
+        return GPU_INSTANCE;
+    }
+
+    public static IFPSProvider getFpsInfo() {
+        return FPS_INSTANCE;
+    }
+
+    public static IPermissionProvider getPermissionProvider() {
+        return PERMISSION_INSTANCE;
     }
 
 }

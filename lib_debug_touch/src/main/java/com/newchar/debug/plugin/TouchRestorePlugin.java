@@ -41,6 +41,11 @@ public class TouchRestorePlugin extends ScreenDisplayPlugin {
         return TAG_PLUGIN;
     }
 
+    @Override
+    public String getName() {
+        return "触摸回放";
+    }
+
     /**
      * 加载插件 UI。
      *

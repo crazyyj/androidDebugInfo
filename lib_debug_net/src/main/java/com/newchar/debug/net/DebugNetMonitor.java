@@ -15,6 +15,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public final class DebugNetMonitor {
 
+    public static final int START_OK = 0;
+    public static final int START_NEED_PERMISSION = 1;
+    public static final int START_CONFIG_ERROR = 2;
+    public static final int START_FAILED = 3;
+
     private static final List<DebugNetTrafficListener> LISTENERS = new CopyOnWriteArrayList<>();
     private static final Handler WORK_HANDLER = HandleWrapper.obtainAsyncHandler(null);
     private static volatile boolean sRunning;
@@ -24,26 +29,26 @@ public final class DebugNetMonitor {
     private DebugNetMonitor() {
     }
 
-    public static boolean start(Context context) {
+    public static int start(Context context) {
         if (context == null) {
-            return false;
+            return START_FAILED;
         }
         String configError = sConfig.validateForStart();
         if (configError != null) {
             dispatch(buildConfigErrorEvent(configError));
-            return false;
+            return START_CONFIG_ERROR;
         }
         Context appContext = context.getApplicationContext();
         Intent prepareIntent = VpnService.prepare(appContext);
         if (prepareIntent != null) {
             prepareIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             appContext.startActivity(prepareIntent);
-            return false;
+            return START_NEED_PERMISSION;
         }
         Intent intent = new Intent(appContext, DebugNetVpnService.class);
         intent.setAction(DebugNetVpnService.ACTION_START);
         appContext.startService(intent);
-        return true;
+        return START_OK;
     }
 
     public static void stop(Context context) {

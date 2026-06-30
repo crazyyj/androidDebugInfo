@@ -15,9 +15,12 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import com.newchar.debug.device.bean.PermissionItem;
+import com.newchar.debug.device.view.PermissionListView;
 import com.newchar.debug.utils.ViewUtils;
 
 import java.lang.ref.WeakReference;
+import java.util.List;
 
 public class DevicesInfoView extends ScrollView {
 
@@ -27,12 +30,13 @@ public class DevicesInfoView extends ScrollView {
     public static final int ID_VIEW_MEMORY = generateViewId();
     public static final int ID_VIEW_DEVICES = generateViewId();
     public static final int ID_VIEW_SCREEN = generateViewId();
-    public static final int ID_VIEW_STORAGE = generateViewId();
-    public static final int ID_VIEW_FILE = generateViewId();
+    public static final int ID_VIEW_PERMISSION = generateViewId();
 
     private static final float TITLE_TEXT_SIZE_SP = 16f;
 
     private LinearLayout mLinearChildView;
+    private PermissionListView mPermissionListView;
+    private PermissionAdapter mPermissionAdapter;
 
     public DevicesInfoView(Context context) {
         this(context, null);
@@ -75,16 +79,18 @@ public class DevicesInfoView extends ScrollView {
         }
     }
 
-    public void setStorageInfo(CharSequence storageInfo) {
-        if (mLinearChildView != null) {
-            setTitleText(mLinearChildView.findViewById(ID_VIEW_STORAGE), storageInfo);
+    public void setPermissionInfo(List<PermissionItem> permissions) {
+        if (mLinearChildView == null) {
+            return;
         }
-    }
-
-    public void setFileInfo(CharSequence fileInfo) {
-        if (mLinearChildView != null) {
-            ViewUtils.setText(mLinearChildView.findViewById(ID_VIEW_FILE), fileInfo);
+        if (mPermissionListView == null) {
+            addPermissionInfoView(mLinearChildView);
         }
+        if (mPermissionAdapter == null) {
+            mPermissionAdapter = new PermissionAdapter();
+            mPermissionListView.setAdapter(mPermissionAdapter);
+        }
+        mPermissionAdapter.refreshData(permissions);
     }
 
     @Override
@@ -117,6 +123,10 @@ public class DevicesInfoView extends ScrollView {
             return;
         }
         TextView textView = (TextView) view;
+        CharSequence current = textView.getText();
+        if (current != null && current.toString().equals(String.valueOf(text))) {
+            return;
+        }
         if (TextUtils.isEmpty(text)) {
             textView.setText(text);
             return;
@@ -135,7 +145,7 @@ public class DevicesInfoView extends ScrollView {
         textView.setText(builder);
     }
 
-    private static final class addDevicesView implements Runnable {
+    private final class addDevicesView implements Runnable {
 
         private final WeakReference<ViewGroup> mContainerRef;
 
@@ -153,8 +163,7 @@ public class DevicesInfoView extends ScrollView {
             addScreenInfoView(container);
             addMemoryInfoView(container);
             addDevicesInfoView(container);
-            addStorageInfoView(container);
-            addFileInfoView(container);
+            addPermissionInfoView(container);
             mContainerRef.clear();
         }
 
@@ -165,15 +174,6 @@ public class DevicesInfoView extends ScrollView {
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             screenInfoView.setTextColor(Color.DKGRAY);
             parent.addView(screenInfoView);
-        }
-
-        private void addStorageInfoView(ViewGroup parent) {
-            TextView storageInfoView = new TextView(parent.getContext());
-            storageInfoView.setId(ID_VIEW_STORAGE);
-            storageInfoView.setLayoutParams(new ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            storageInfoView.setTextColor(Color.DKGRAY);
-            parent.addView(storageInfoView);
         }
 
         private void addDevicesInfoView(ViewGroup parent) {
@@ -203,15 +203,24 @@ public class DevicesInfoView extends ScrollView {
             parent.addView(cpuInfoView);
         }
 
-        private void addFileInfoView(ViewGroup parent) {
-            TextView fileInfoView = new TextView(parent.getContext());
-            fileInfoView.setId(ID_VIEW_FILE);
-            fileInfoView.setLayoutParams(new ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            fileInfoView.setTextColor(Color.DKGRAY);
-            parent.addView(fileInfoView);
-        }
+    }
 
+    private void addPermissionInfoView(ViewGroup parent) {
+        Context context = parent.getContext();
+
+        TextView titleView = new TextView(context);
+        titleView.setId(ID_VIEW_PERMISSION);
+        titleView.setLayoutParams(new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        titleView.setTextColor(Color.DKGRAY);
+        parent.addView(titleView);
+        setTitleText(titleView, "权限列表");
+
+        mPermissionListView = new PermissionListView(context);
+        mPermissionListView.setLayoutParams(new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        mPermissionListView.setDivider(null);
+        parent.addView(mPermissionListView);
     }
 
 }

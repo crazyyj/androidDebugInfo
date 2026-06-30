@@ -3,8 +3,9 @@ package com.newchar.debug.device;
 import com.newchar.debug.device.bean.CPUInfo;
 import com.newchar.debug.device.bean.DevicesInfo;
 import com.newchar.debug.device.bean.MemoryInfo;
-import com.newchar.debug.device.disk.StorageInfo;
-import com.newchar.debug.device.traffic.TrafficInfo;
+import com.newchar.debug.device.bean.PermissionItem;
+
+import java.util.List;
 
 /**
  * @author newChar
@@ -18,12 +19,10 @@ public interface DevicesInfoCallback {
 
     void onCPUInfoCallback(CPUInfo info);
 
-    void onStorageCallback(StorageInfo storageInfo);
-
     void onDevicesInfoCallback(DevicesInfo devicesInfo);
 
     void onFrameRateUpdate(float frameInterval_ms, float frameRate);
 
-    void onTrafficUpdate(TrafficInfo trafficInfo);
+    void onPermissionCallback(List<PermissionItem> permissions);
 
 }

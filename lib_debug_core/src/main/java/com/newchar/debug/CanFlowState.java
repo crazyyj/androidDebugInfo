@@ -5,6 +5,7 @@ import android.graphics.PixelFormat;
 import android.os.Build;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 
 import com.newchar.debug.utils.UIUtils;
@@ -106,6 +107,8 @@ class CanFlowState implements IFLowState {
         if (mDebugView == null) {
             mDebugView = new DebugView(context);
             mDebugView.setMoveHandler(this::handleWindowMove);
+            mDebugView.setLayoutUpdateHandler(this::handleLayoutUpdate);
+            mDebugView.setFocusToggleHandler(this::handleFocusToggle);
         }
     }
 
@@ -158,6 +161,44 @@ class CanFlowState implements IFLowState {
         mWindowParams.x = mWindowParams.x + Math.round(deltaX);
         mWindowParams.y = mWindowParams.y + Math.round(deltaY);
         mWindowManager.updateViewLayout(control, mWindowParams);
+    }
+
+    /**
+     * 处理 DebugView 自身尺寸变更，将宽高同步到 WindowManager。
+     *
+     * @param view DebugView
+     * @param lp   DebugView 当前的 LayoutParams（即 mWindowParams 实例）
+     */
+    private void handleLayoutUpdate(View view, ViewGroup.LayoutParams lp) {
+        if (!mAttached || mWindowManager == null || mWindowParams == null || view == null) {
+            return;
+        }
+        if (lp instanceof WindowManager.LayoutParams) {
+            mWindowParams.width = lp.width;
+            mWindowParams.height = lp.height;
+        }
+        mWindowManager.updateViewLayout(view, mWindowParams);
+    }
+
+    /**
+     * 切换悬浮窗的可聚焦状态，使 EditText 能唤起软键盘。
+     *
+     * @param view      DebugView
+     * @param focusable true 表示需要焦点（移除 FLAG_NOT_FOCUSABLE），false 表示恢复无焦点
+     */
+    private void handleFocusToggle(View view, boolean focusable) {
+        if (!mAttached || mWindowManager == null || mWindowParams == null || view == null) {
+            return;
+        }
+        if (focusable) {
+            mWindowParams.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+        } else {
+            mWindowParams.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+        }
+        try {
+            mWindowManager.updateViewLayout(view, mWindowParams);
+        } catch (IllegalArgumentException ignored) {
+        }
     }
 
     /**

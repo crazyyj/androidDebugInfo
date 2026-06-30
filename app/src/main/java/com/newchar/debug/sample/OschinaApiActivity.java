@@ -81,11 +81,13 @@ public class OschinaApiActivity extends AppCompatActivity {
         btnStartVpn.setText("启动 VPN 网络监控");
         btnStartVpn.setAllCaps(false);
         btnStartVpn.setOnClickListener(v -> {
-            boolean starting = DebugNetMonitor.start(this);
-            if (starting) {
+            int result = DebugNetMonitor.start(this);
+            if (result == DebugNetMonitor.START_OK) {
                 appendLog("VPN 网络监控已启动");
-            } else {
+            } else if (result == DebugNetMonitor.START_NEED_PERMISSION) {
                 appendLog("VPN 网络监控启动中，请授权后重试");
+            } else {
+                appendLog("VPN 网络监控启动失败");
             }
         });
         container.addView(btnStartVpn);

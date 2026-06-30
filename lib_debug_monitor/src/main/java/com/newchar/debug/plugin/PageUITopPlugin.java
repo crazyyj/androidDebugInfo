@@ -169,6 +169,11 @@ public class PageUITopPlugin extends ScreenDisplayPlugin {
     }
 
     @Override
+    public String getName() {
+        return "页面栈";
+    }
+
+    @Override
     public void onLoad(PluginContext ctx, ViewGroup pluginContainerView) {
         initTaskTopView(pluginContainerView);
         DebugStackMotion.init();

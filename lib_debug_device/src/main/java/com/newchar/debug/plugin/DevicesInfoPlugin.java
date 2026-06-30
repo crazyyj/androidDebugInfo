@@ -4,6 +4,7 @@ import android.content.Context;
 import android.view.View;
 import android.view.ViewGroup;
 
+import com.newchar.debug.utils.DebugUtils;
 import com.newchar.debug.utils.ViewUtils;
 import com.newchar.debug.api.PluginContext;
 import com.newchar.debug.api.ScreenDisplayPlugin;
@@ -11,12 +12,12 @@ import com.newchar.debug.device.DeviceMonitor;
 import com.newchar.debug.device.DeviceStaticInfoCollector;
 import com.newchar.debug.device.DevicesInfoCallback;
 import com.newchar.debug.device.DevicesInfoView;
-import com.newchar.debug.utils.DebugUtils;
 import com.newchar.debug.device.bean.CPUInfo;
 import com.newchar.debug.device.bean.DevicesInfo;
 import com.newchar.debug.device.bean.MemoryInfo;
-import com.newchar.debug.device.disk.StorageInfo;
-import com.newchar.debug.device.traffic.TrafficInfo;
+import com.newchar.debug.device.bean.PermissionItem;
+
+import java.util.List;
 
 /**
  * 展示设备基础信息与运行时监控数据。
@@ -36,6 +37,11 @@ public class DevicesInfoPlugin extends ScreenDisplayPlugin {
     @Override
     public String id() {
         return TAG_PLUGIN;
+    }
+
+    @Override
+    public String getName() {
+        return "设备信息";
     }
 
     /**
@@ -126,13 +132,6 @@ public class DevicesInfoPlugin extends ScreenDisplayPlugin {
         }
 
         @Override
-        public void onStorageCallback(StorageInfo storageInfo) {
-            if (mInfoView != null) {
-                mInfoView.setStorageInfo(formatStorageInfo(storageInfo));
-            }
-        }
-
-        @Override
         public void onDevicesInfoCallback(DevicesInfo devicesInfo) {
             if (mInfoView != null) {
                 mInfoView.setDevicesInfo(formatDevicesInfo(devicesInfo));
@@ -147,9 +146,9 @@ public class DevicesInfoPlugin extends ScreenDisplayPlugin {
         }
 
         @Override
-        public void onTrafficUpdate(TrafficInfo trafficInfo) {
+        public void onPermissionCallback(List<PermissionItem> permissions) {
             if (mInfoView != null) {
-                mInfoView.setFileInfo(formatTrafficInfo(trafficInfo));
+                mInfoView.setPermissionInfo(permissions);
             }
         }
     };
@@ -185,24 +184,6 @@ public class DevicesInfoPlugin extends ScreenDisplayPlugin {
     }
 
     /**
-     * 格式化存储信息。
-     *
-     * @param storageInfo 存储信息
-     * @return 展示文本
-     */
-    private static CharSequence formatStorageInfo(StorageInfo storageInfo) {
-        if (storageInfo == null) {
-            return "存储\n暂无数据";
-        }
-        return "存储\n内部总量 : " + formatBytes(storageInfo.getDevicesTotalSize())
-                + "\n内部可用 : " + formatBytes(storageInfo.getDevicesAvailableSize())
-                + "\n内部空闲 : " + formatBytes(storageInfo.getDevicesFreeSize())
-                + "\n外部总量 : " + formatBytes(storageInfo.getExternalTotalSize())
-                + "\n外部可用 : " + formatBytes(storageInfo.getExternalAvailableSize())
-                + "\n外部空闲 : " + formatBytes(storageInfo.getExternalFreeSize());
-    }
-
-    /**
      * 格式化基础设备信息。
      *
      * @param devicesInfo 设备信息
@@ -225,22 +206,6 @@ public class DevicesInfoPlugin extends ScreenDisplayPlugin {
     private static CharSequence formatFrameRateInfo(float frameIntervalMs, float frameRate) {
         return "帧率\n帧间隔 : " + DebugUtils.keepTwo(frameIntervalMs)
                 + " ms\nFPS : " + DebugUtils.keepTwo(frameRate);
-    }
-
-    /**
-     * 格式化流量信息。
-     *
-     * @param trafficInfo 流量信息
-     * @return 展示文本
-     */
-    private static CharSequence formatTrafficInfo(TrafficInfo trafficInfo) {
-        if (trafficInfo == null) {
-            return "网络流量\n暂无数据";
-        }
-        return "网络流量\n接收总量 : " + formatBytes(trafficInfo.getRxBytes())
-                + "\n发送总量 : " + formatBytes(trafficInfo.getTxBytes())
-                + "\n接收速率 : " + formatBytes(trafficInfo.getRxSpeedBytes()) + "/s"
-                + "\n发送速率 : " + formatBytes(trafficInfo.getTxSpeedBytes()) + "/s";
     }
 
     /**

@@ -14,67 +14,72 @@ import com.newchar.debug.device.bean.DevicesInfo;
 
 import java.util.Arrays;
 import java.util.Locale;
+import java.util.Map;
 
 public final class DeviceStaticInfoCollector {
+
+    private static final Object CACHE_LOCK = new Object();
+    private static volatile DevicesInfo sCached;
 
     private DeviceStaticInfoCollector() {
     }
 
+    /**
+     * 收集设备静态信息。首次调用后会缓存结果，后续直接返回缓存实例。
+     * Context 为空时返回空对象，避免调用方 NPE。
+     */
     static DevicesInfo collect(Context context) {
-        DevicesInfo info = DevicesInfo.getInstance();
-        info.setManufacturer(DebugUtils.getDeviceManufacturer());
-        info.setBrand(DebugUtils.getDeviceBrand());
-        info.setProduct(DebugUtils.getDeviceProduct());
-        info.setModel(DebugUtils.getDeviceModel());
-        info.setBoard(DebugUtils.getDeviceBoard());
-        info.setDeviceName(DebugUtils.getDeviceName());
-        info.setHardware(DebugUtils.getDeviceHardwareName());
-        info.setDisplay(DebugUtils.getDeviceDisplay());
-        info.setFingerprint(DebugUtils.getDeviceFingerprint());
-        info.setHost(DebugUtils.getDeviceHost());
-        info.setBuildId(DebugUtils.getDeviceId());
-        info.setBuildUser(DebugUtils.getDeviceUser());
-        info.setBuildType(Build.TYPE);
-        info.setBuildTags(Build.TAGS);
-        info.setBootloader(Build.BOOTLOADER);
-        info.setAndroidVersion(DebugUtils.getDeviceAndroidVersion());
-        info.setSDKVersion(DebugUtils.getDeviceSDK());
-        info.setSupportedAbis(joinAbis());
-        info.setLanguage(Locale.getDefault().toLanguageTag());
-        info.setSecurityPatch(readSecurityPatch());
-        info.setAndroidId(readAndroidId(context));
-        info.setSerial(readSerial(context));
-        info.setImei(readImei(context));
-        return info;
+        if (context == null) {
+            return DevicesInfo.builder().build();
+        }
+        DevicesInfo cached = sCached;
+        if (cached != null) {
+            return cached;
+        }
+        synchronized (CACHE_LOCK) {
+            if (sCached != null) {
+                return sCached;
+            }
+            sCached = build(context);
+            return sCached;
+        }
     }
 
     public static CharSequence buildDisplayText(Context context) {
         DevicesInfo info = collect(context);
-        StringBuilder builder = new StringBuilder();
-        appendLine(builder, "厂商", info.getManufacturer());
-        appendLine(builder, "品牌", info.getBrand());
-        appendLine(builder, "产品名", info.getProduct());
-        appendLine(builder, "设备名", info.getDeviceName());
-        appendLine(builder, "设备型号", info.getModel());
-        appendLine(builder, "主板", info.getBoard());
-        appendLine(builder, "硬件", info.getHardware());
-        appendLine(builder, "Display", info.getDisplay());
-        appendLine(builder, "Fingerprint", info.getFingerprint());
-        appendLine(builder, "Host", info.getHost());
-        appendLine(builder, "Build ID", info.getBuildId());
-        appendLine(builder, "Build User", info.getBuildUser());
-        appendLine(builder, "Build Type", info.getBuildType());
-        appendLine(builder, "Build Tags", info.getBuildTags());
-        appendLine(builder, "Bootloader", info.getBootloader());
-        appendLine(builder, "Android 版本", info.getAndroidVersion());
-        appendLine(builder, "Android SDK", String.valueOf(info.getSDKVersion()));
-        appendLine(builder, "安全补丁", info.getSecurityPatch());
-        appendLine(builder, "支持 ABI", info.getSupportedAbis());
-        appendLine(builder, "系统语言", info.getLanguage());
-        appendLine(builder, "Android ID", info.getAndroidId());
-        appendLine(builder, "Serial", info.getSerial());
-        appendLine(builder, "IMEI", info.getImei());
+        StringBuilder builder = new StringBuilder(512);
+        for (Map.Entry<String, String> entry : info.toMap().entrySet()) {
+            appendLine(builder, entry.getKey(), entry.getValue());
+        }
         return builder.toString();
+    }
+
+    private static DevicesInfo build(Context context) {
+        return DevicesInfo.builder()
+                .manufacturer(DebugUtils.getDeviceManufacturer())
+                .brand(DebugUtils.getDeviceBrand())
+                .product(DebugUtils.getDeviceProduct())
+                .model(DebugUtils.getDeviceModel())
+                .board(DebugUtils.getDeviceBoard())
+                .deviceName(DebugUtils.getDeviceName())
+                .hardware(DebugUtils.getDeviceHardwareName())
+                .display(DebugUtils.getDeviceDisplay())
+                .fingerprint(DebugUtils.getDeviceFingerprint())
+                .host(DebugUtils.getDeviceHost())
+                .buildId(DebugUtils.getDeviceId())
+                .buildUser(DebugUtils.getDeviceUser())
+                .buildType(Build.TYPE)
+                .buildTags(Build.TAGS)
+                .bootloader(Build.BOOTLOADER)
+                .androidVersion(DebugUtils.getDeviceAndroidVersion())
+                .sdkVersion(DebugUtils.getDeviceSDK())
+                .supportedAbis(joinAbis())
+                .language(Locale.getDefault().toLanguageTag())
+                .securityPatch(readSecurityPatch())
+                .androidId(readAndroidId(context))
+                .serial(readSerial(context))
+                .imei(readImei(context))
+                .build();
     }
 
     private static void appendLine(StringBuilder builder, String label, String value) {
@@ -102,24 +107,23 @@ public final class DeviceStaticInfoCollector {
         }
         try {
             return Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
-        } catch (Throwable ignored) {
+        } catch (SecurityException ignored) {
             return null;
         }
     }
 
     @SuppressLint({"HardwareIds", "MissingPermission"})
     private static String readSerial(Context context) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            return null;
-        }
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 if (!hasPermission(context, Manifest.permission.READ_PHONE_STATE)) {
-                    return null;
+                    return "无权限";
                 }
                 return Build.getSerial();
             }
             return Build.SERIAL;
+        } catch (SecurityException e) {
+            return "权限受限";
         } catch (Throwable ignored) {
             return null;
         }
@@ -127,12 +131,15 @@ public final class DeviceStaticInfoCollector {
 
     @SuppressLint({"HardwareIds", "MissingPermission"})
     private static String readImei(Context context) {
-        if (context == null || !hasPermission(context, Manifest.permission.READ_PHONE_STATE)) {
+        if (context == null) {
             return null;
+        }
+        if (!hasPermission(context, Manifest.permission.READ_PHONE_STATE)) {
+            return "无权限";
         }
         PackageManager packageManager = context.getPackageManager();
         if (packageManager == null || !packageManager.hasSystemFeature(PackageManager.FEATURE_TELEPHONY)) {
-            return null;
+            return "不支持";
         }
         try {
             TelephonyManager telephonyManager =
@@ -140,10 +147,15 @@ public final class DeviceStaticInfoCollector {
             if (telephonyManager == null) {
                 return null;
             }
+            String result;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                return telephonyManager.getImei();
+                result = telephonyManager.getImei();
+            } else {
+                result = telephonyManager.getDeviceId();
             }
-            return telephonyManager.getDeviceId();
+            return result;
+        } catch (SecurityException e) {
+            return "权限受限";
         } catch (Throwable ignored) {
             return null;
         }
@@ -159,4 +171,5 @@ public final class DeviceStaticInfoCollector {
         }
         return context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED;
     }
+
 }

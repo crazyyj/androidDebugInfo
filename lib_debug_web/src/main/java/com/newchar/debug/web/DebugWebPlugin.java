@@ -30,6 +30,11 @@ public class DebugWebPlugin extends ScreenDisplayPlugin {
         return ID;
     }
 
+    @Override
+    public String getName() {
+        return "网页调试";
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     public void onLoad(PluginContext ctx, ViewGroup pluginContainerView) {

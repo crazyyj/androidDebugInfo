@@ -33,6 +33,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class MethodFieldMonitorPlugin extends ScreenDisplayPlugin {
 
     public static final String TAG_PLUGIN = "Method_Field_Monitor";
+
     private static final Object sConfigLock = new Object();
     private static final Set<String> sWatchFieldKeys = new HashSet<>();
     private static final Set<String> sSilentWatchFieldKeys = new HashSet<>();
@@ -244,6 +245,11 @@ public class MethodFieldMonitorPlugin extends ScreenDisplayPlugin {
     @Override
     public String id() {
         return TAG_PLUGIN;
+    }
+
+    @Override
+    public String getName() {
+        return "方法字段监控";
     }
 
     @Override

@@ -6,11 +6,11 @@ package com.newchar.debug.device.devices;
  * @since 获取fps值，得知UI卡顿问题
  * @since 迭代版本，（以及描述）
  */
-interface IFPSProvider {
+public interface IFPSProvider {
 
-    void getFps(onFpsFreshListener l);
+    void getFps(FpsFreshListener l);
 
-    interface onFpsFreshListener {
+    interface FpsFreshListener {
         void onFresh(float fps);
     }
 }

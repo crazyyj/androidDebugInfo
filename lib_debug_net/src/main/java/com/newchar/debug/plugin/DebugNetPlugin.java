@@ -2,6 +2,7 @@ package com.newchar.debug.plugin;
 
 import android.content.Context;
 import android.graphics.Color;
+import android.os.Handler;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -15,11 +16,14 @@ import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.Spinner;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.newchar.debug.utils.KVUtil;
 import com.newchar.debug.utils.ViewUtils;
 import com.newchar.debug.api.PluginContext;
 import com.newchar.debug.api.ScreenDisplayPlugin;
+import com.newchar.debug.core.traffic.TrafficInfo;
+import com.newchar.debug.core.traffic.TrafficMonitor;
 import com.newchar.debug.net.DebugNetConfig;
 import com.newchar.debug.net.DebugNetEvent;
 import com.newchar.debug.net.DebugNetMonitor;
@@ -40,6 +44,7 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
 
     private static final int MAX_EVENT_COUNT = 300;
     private static final int MAX_FLUSH_BATCH = 60;
+    private static final long TRAFFIC_REFRESH_INTERVAL_MS = 1000L;
     private static final String KEY_HTTP_DECODE = "debug_net_http_decode";
     private static final String KEY_HTTPS_DECODE = "debug_net_https_decode";
     private static final String KEY_CERT_PATH = "debug_net_cert_path";
@@ -52,6 +57,7 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
 
     private LinearLayout mRootView;
     private TextView mStatusView;
+    private TextView mTrafficView;
     private TrafficAdapter mAdapter;
     private CheckBox mHttpDecodeCheckBox;
     private CheckBox mHttpsDecodeCheckBox;
@@ -59,10 +65,17 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
     private EditText mCertPasswordInput;
     private Spinner mKeystoreTypeSpinner;
     private Context mAppContext;
+    private TrafficMonitor mTrafficMonitor;
+    private final Handler mMainHandler = HandleWrapper.getMainHandler();
 
     @Override
     public String id() {
         return TAG_PLUGIN;
+    }
+
+    @Override
+    public String getName() {
+        return "网络监控";
     }
 
     @Override
@@ -81,18 +94,21 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
     @Override
     public void onShow() {
         updateStatus();
+        startTrafficMonitor();
         ViewUtils.setVisibility(mRootView, View.VISIBLE);
     }
 
     @Override
     public void onHide() {
         ViewUtils.setVisibility(mRootView, View.GONE);
+        stopTrafficMonitor();
     }
 
     @Override
     public void onUnload() {
         DebugNetMonitor.removeListener(mTrafficListener);
         HandleWrapper.getMainHandler().removeCallbacks(mFlushTask);
+        stopTrafficMonitor();
         mPendingEvents.clear();
         mFlushScheduled.set(false);
         mEvents.clear();
@@ -101,6 +117,7 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
         }
         mRootView = null;
         mStatusView = null;
+        mTrafficView = null;
         mAdapter = null;
         mHttpDecodeCheckBox = null;
         mHttpsDecodeCheckBox = null;
@@ -108,6 +125,10 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
         mCertPasswordInput = null;
         mKeystoreTypeSpinner = null;
         mAppContext = null;
+        if (mTrafficMonitor != null) {
+            mTrafficMonitor.release();
+            mTrafficMonitor = null;
+        }
     }
 
     private void initView(Context context) {
@@ -123,14 +144,26 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
         actionBar.setOrientation(LinearLayout.HORIZONTAL);
 
         Button startButton = new Button(context);
-        startButton.setText("启动VPN监听");
+        startButton.setText("启动VPN");
         startButton.setOnClickListener(v -> {
             applyConfigFromInputs();
-            boolean started = DebugNetMonitor.start(context);
-            if (started) {
-                mStatusView.setText("VPN监听启动中");
-            } else {
-                updateStatus();
+            int result = DebugNetMonitor.start(context);
+            switch (result) {
+                case DebugNetMonitor.START_OK:
+                    mStatusView.setText("VPN监听启动中");
+                    break;
+                case DebugNetMonitor.START_NEED_PERMISSION:
+                    Toast.makeText(context, "VPN授权请求已发出，请授权后再次点击启动",
+                            Toast.LENGTH_LONG).show();
+                    mStatusView.setText("等待VPN授权，请授权后再次点击启动");
+                    break;
+                case DebugNetMonitor.START_CONFIG_ERROR:
+                    updateStatus();
+                    break;
+                default:
+                    Toast.makeText(context, "VPN启动失败", Toast.LENGTH_SHORT).show();
+                    updateStatus();
+                    break;
             }
         });
 
@@ -167,6 +200,11 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
         mAdapter = new TrafficAdapter(context, mEvents);
         listView.setAdapter(mAdapter);
 
+        mTrafficView = new TextView(context);
+        mTrafficView.setTextColor(Color.DKGRAY);
+        mTrafficView.setTextSize(13f);
+        mTrafficView.setPadding(12, 12, 12, 12);
+
         mRootView.addView(actionBar, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -180,6 +218,57 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 0,
                 1f));
+        mRootView.addView(mTrafficView, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+    }
+
+    private void startTrafficMonitor() {
+        if (mAppContext == null) {
+            return;
+        }
+        if (mTrafficMonitor == null) {
+            mTrafficMonitor = new TrafficMonitor(mAppContext);
+        }
+        mMainHandler.removeCallbacks(mTrafficRefreshTask);
+        mMainHandler.post(mTrafficRefreshTask);
+    }
+
+    private void stopTrafficMonitor() {
+        mMainHandler.removeCallbacks(mTrafficRefreshTask);
+    }
+
+    private final Runnable mTrafficRefreshTask = new Runnable() {
+        @Override
+        public void run() {
+            if (mTrafficMonitor == null || mTrafficView == null) {
+                return;
+            }
+            TrafficInfo info = mTrafficMonitor.sample();
+            mTrafficView.setText("网络流量\n接收总量 : " + formatBytes(info.getRxBytes())
+                    + "\n发送总量 : " + formatBytes(info.getTxBytes())
+                    + "\n接收速率 : " + formatBytes(info.getRxSpeedBytes()) + "/s"
+                    + "\n发送速率 : " + formatBytes(info.getTxSpeedBytes()) + "/s");
+            if (mRootView != null && mRootView.getVisibility() == View.VISIBLE) {
+                mMainHandler.postDelayed(this, TRAFFIC_REFRESH_INTERVAL_MS);
+            }
+        }
+    };
+
+    private static String formatBytes(double bytes) {
+        if (bytes < 0) {
+            return "不可用";
+        }
+        if (bytes >= 1024 * 1024 * 1024) {
+            return String.format(java.util.Locale.US, "%.2f", bytes / 1024 / 1024 / 1024) + " GB";
+        }
+        if (bytes >= 1024 * 1024) {
+            return String.format(java.util.Locale.US, "%.2f", bytes / 1024 / 1024) + " MB";
+        }
+        if (bytes >= 1024) {
+            return String.format(java.util.Locale.US, "%.2f", bytes / 1024) + " KB";
+        }
+        return String.format(java.util.Locale.US, "%.2f", bytes) + " B";
     }
 
     private void updateStatus() {
