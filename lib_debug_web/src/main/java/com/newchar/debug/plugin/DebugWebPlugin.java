@@ -19,10 +19,12 @@ import com.newchar.debug.browser.WebSettingsBuilder;
 public class DebugWebPlugin extends ScreenDisplayPlugin {
 
     public static final String ID = "debug_web";
+    private static final String DEFAULT_URL = "https://www.baidu.com";
 
     private WebView mWebView;
     private EditText mUrlInput;
     private ViewGroup mPluginContainer;
+    private View mRootView;
 
     @Override
     public String id() {
@@ -43,7 +45,8 @@ public class DebugWebPlugin extends ScreenDisplayPlugin {
         LinearLayout root = new LinearLayout(context);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        mRootView = root;
 
         LinearLayout toolbar = new LinearLayout(context);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
@@ -81,6 +84,10 @@ public class DebugWebPlugin extends ScreenDisplayPlugin {
         root.addView(mWebView);
 
         pluginContainerView.addView(root);
+        root.setVisibility(View.GONE);
+
+        mUrlInput.setText(DEFAULT_URL);
+        mWebView.loadUrl(DEFAULT_URL);
     }
 
     private View createGoButton(Context context) {
@@ -126,15 +133,22 @@ public class DebugWebPlugin extends ScreenDisplayPlugin {
 
     @Override
     public void onShow() {
+        if (mRootView != null) {
+            mRootView.setVisibility(View.VISIBLE);
+        }
         if (mWebView != null) {
             mWebView.setVisibility(View.VISIBLE);
+            mWebView.onResume();
         }
     }
 
     @Override
     public void onHide() {
+        if (mRootView != null) {
+            mRootView.setVisibility(View.GONE);
+        }
         if (mWebView != null) {
-            mWebView.setVisibility(View.GONE);
+            mWebView.onPause();
         }
     }
 
@@ -147,5 +161,6 @@ public class DebugWebPlugin extends ScreenDisplayPlugin {
         }
         mUrlInput = null;
         mPluginContainer = null;
+        mRootView = null;
     }
 }

@@ -246,10 +246,16 @@ public class DebugView extends LinearLayout {
     }
 
     private void setPluginAreaVisible(boolean visible) {
-        int childCount = getChildCount();
-        for (int i = 1; i < childCount; i++) {
-            View child = getChildAt(i);
-            child.setVisibility(visible ? View.VISIBLE : View.GONE);
+        if (visible) {
+            if (mCurrentPlugin != null) {
+                mCurrentPlugin.onShow();
+            }
+        } else {
+            int childCount = getChildCount();
+            for (int i = 1; i < childCount; i++) {
+                View child = getChildAt(i);
+                child.setVisibility(View.GONE);
+            }
         }
     }
 

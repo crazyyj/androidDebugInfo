@@ -9,6 +9,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
+import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
@@ -56,9 +57,10 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
     private final AtomicBoolean mFlushScheduled = new AtomicBoolean(false);
 
     private LinearLayout mRootView;
+    private ListView mListView;
+    private NetPluginAdapter mAdapter;
     private TextView mStatusView;
     private TextView mTrafficView;
-    private TrafficAdapter mAdapter;
     private CheckBox mHttpDecodeCheckBox;
     private CheckBox mHttpsDecodeCheckBox;
     private EditText mCertPathInput;
@@ -84,7 +86,9 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
         initView(pluginContainerView.getContext());
         pluginContainerView.addView(mRootView,
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT);
+                0);
+        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) mRootView.getLayoutParams();
+        lp.weight = 1f;
         restoreConfigIntoMonitor();
         DebugNetMonitor.addListener(mTrafficListener);
         updateStatus();
@@ -116,6 +120,7 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
             mAdapter.notifyDataSetChanged();
         }
         mRootView = null;
+        mListView = null;
         mStatusView = null;
         mTrafficView = null;
         mAdapter = null;
@@ -139,88 +144,14 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
         mRootView.setOrientation(LinearLayout.VERTICAL);
         mRootView.setBackgroundColor(0x4D808080);
 
-        LinearLayout actionBar = new LinearLayout(context);
-        actionBar.setGravity(Gravity.CENTER_VERTICAL);
-        actionBar.setOrientation(LinearLayout.HORIZONTAL);
+        mListView = new ListView(context);
+        mAdapter = new NetPluginAdapter(context, mEvents);
+        mAdapter.ensureConfigView();
+        mListView.setAdapter(mAdapter);
 
-        Button startButton = new Button(context);
-        startButton.setText("启动VPN");
-        startButton.setOnClickListener(v -> {
-            applyConfigFromInputs();
-            int result = DebugNetMonitor.start(context);
-            switch (result) {
-                case DebugNetMonitor.START_OK:
-                    mStatusView.setText("VPN监听启动中");
-                    break;
-                case DebugNetMonitor.START_NEED_PERMISSION:
-                    Toast.makeText(context, "VPN授权请求已发出，请授权后再次点击启动",
-                            Toast.LENGTH_LONG).show();
-                    mStatusView.setText("等待VPN授权，请授权后再次点击启动");
-                    break;
-                case DebugNetMonitor.START_CONFIG_ERROR:
-                    updateStatus();
-                    break;
-                default:
-                    Toast.makeText(context, "VPN启动失败", Toast.LENGTH_SHORT).show();
-                    updateStatus();
-                    break;
-            }
-        });
-
-        Button stopButton = new Button(context);
-        stopButton.setText("停止");
-        stopButton.setOnClickListener(v -> {
-            DebugNetMonitor.stop(context);
-            updateStatus();
-        });
-
-        Button clearButton = new Button(context);
-        clearButton.setText("清空");
-        clearButton.setOnClickListener(v -> {
-            mEvents.clear();
-            if (mAdapter != null) {
-                mAdapter.notifyDataSetChanged();
-            }
-        });
-
-        mStatusView = new TextView(context);
-        mStatusView.setTextColor(Color.DKGRAY);
-        mStatusView.setPadding(12, 0, 12, 0);
-
-        LinearLayout settingsLayout = buildSettingsLayout(context);
-
-        actionBar.addView(startButton, new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        actionBar.addView(stopButton, new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        actionBar.addView(clearButton, new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        ListView listView = new ListView(context);
-        mAdapter = new TrafficAdapter(context, mEvents);
-        listView.setAdapter(mAdapter);
-
-        mTrafficView = new TextView(context);
-        mTrafficView.setTextColor(Color.DKGRAY);
-        mTrafficView.setTextSize(13f);
-        mTrafficView.setPadding(12, 12, 12, 12);
-
-        mRootView.addView(actionBar, new LinearLayout.LayoutParams(
+        mRootView.addView(mListView, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT));
-        mRootView.addView(settingsLayout, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT));
-        mRootView.addView(mStatusView, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT));
-        mRootView.addView(listView, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f));
-        mRootView.addView(mTrafficView, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT));
+                ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
     private void startTrafficMonitor() {
@@ -460,22 +391,149 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
         return new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
     }
 
-    private static final class TrafficAdapter extends ArrayAdapter<DebugNetEvent> {
+    private View buildConfigView(Context context) {
+        LinearLayout configRoot = new LinearLayout(context);
+        configRoot.setOrientation(LinearLayout.VERTICAL);
 
-        TrafficAdapter(Context context, List<DebugNetEvent> events) {
-            super(context, android.R.layout.simple_list_item_1, events);
+        LinearLayout actionBar = new LinearLayout(context);
+        actionBar.setGravity(Gravity.CENTER_VERTICAL);
+        actionBar.setOrientation(LinearLayout.HORIZONTAL);
+
+        Button startButton = new Button(context);
+        startButton.setText("启动VPN");
+        startButton.setOnClickListener(v -> {
+            applyConfigFromInputs();
+            int result = DebugNetMonitor.start(context);
+            switch (result) {
+                case DebugNetMonitor.START_OK:
+                    mStatusView.setText("VPN监听启动中");
+                    break;
+                case DebugNetMonitor.START_NEED_PERMISSION:
+                    Toast.makeText(context, "VPN授权请求已发出，请授权后再次点击启动",
+                            Toast.LENGTH_LONG).show();
+                    mStatusView.setText("等待VPN授权，请授权后再次点击启动");
+                    break;
+                case DebugNetMonitor.START_CONFIG_ERROR:
+                    updateStatus();
+                    break;
+                default:
+                    Toast.makeText(context, "VPN启动失败", Toast.LENGTH_SHORT).show();
+                    updateStatus();
+                    break;
+            }
+        });
+
+        Button stopButton = new Button(context);
+        stopButton.setText("停止");
+        stopButton.setOnClickListener(v -> {
+            DebugNetMonitor.stop(context);
+            updateStatus();
+        });
+
+        Button clearButton = new Button(context);
+        clearButton.setText("清空");
+        clearButton.setOnClickListener(v -> {
+            mEvents.clear();
+            if (mAdapter != null) {
+                mAdapter.notifyDataSetChanged();
+            }
+        });
+
+        actionBar.addView(startButton, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        actionBar.addView(stopButton, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        actionBar.addView(clearButton, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        mStatusView = new TextView(context);
+        mStatusView.setTextColor(Color.DKGRAY);
+        mStatusView.setPadding(12, 0, 12, 0);
+
+        LinearLayout settingsLayout = buildSettingsLayout(context);
+
+        mTrafficView = new TextView(context);
+        mTrafficView.setTextColor(Color.DKGRAY);
+        mTrafficView.setTextSize(13f);
+        mTrafficView.setPadding(12, 12, 12, 12);
+
+        configRoot.addView(actionBar, matchWrap());
+        configRoot.addView(settingsLayout, matchWrap());
+        configRoot.addView(mStatusView, matchWrap());
+        configRoot.addView(mTrafficView, matchWrap());
+        return configRoot;
+    }
+
+    private final class NetPluginAdapter extends BaseAdapter {
+
+        private static final int TYPE_CONFIG = 0;
+        private static final int TYPE_TRAFFIC = 1;
+
+        private final Context mContext;
+        private final List<DebugNetEvent> mEventList;
+        private View mConfigView;
+
+        NetPluginAdapter(Context context, List<DebugNetEvent> events) {
+            mContext = context;
+            mEventList = events;
+        }
+
+        void ensureConfigView() {
+            if (mConfigView == null) {
+                mConfigView = buildConfigView(mContext);
+            }
+        }
+
+        @Override
+        public int getViewTypeCount() {
+            return 2;
+        }
+
+        @Override
+        public int getItemViewType(int position) {
+            return position == 0 ? TYPE_CONFIG : TYPE_TRAFFIC;
+        }
+
+        @Override
+        public int getCount() {
+            return 1 + mEventList.size();
+        }
+
+        @Override
+        public Object getItem(int position) {
+            if (position == 0) {
+                return null;
+            }
+            return mEventList.get(position - 1);
+        }
+
+        @Override
+        public long getItemId(int position) {
+            return position;
         }
 
         @Override
         public View getView(int position, View convertView, ViewGroup parent) {
-            View view = super.getView(position, convertView, parent);
-            DebugNetEvent event = getItem(position);
-            if (view instanceof TextView && event != null) {
-                TextView textView = (TextView) view;
+            if (getItemViewType(position) == TYPE_CONFIG) {
+                ensureConfigView();
+                return mConfigView;
+            }
+            TextView textView;
+            if (convertView instanceof TextView) {
+                textView = (TextView) convertView;
+            } else {
+                textView = new TextView(mContext);
+                int padding = (int) (12 * mContext.getResources().getDisplayMetrics().density);
+                textView.setPadding(padding, padding, padding, padding);
+                textView.setTextSize(13f);
+            }
+            int index = position - 1;
+            if (index >= 0 && index < mEventList.size()) {
+                DebugNetEvent event = mEventList.get(index);
                 textView.setText(event.getSummaryText());
                 textView.setTextColor(event.getTextColor());
             }
-            return view;
+            return textView;
         }
     }
 }
