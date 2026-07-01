@@ -1,0 +1,5 @@
+/build
+/.cxx
+.DS_Store
+AGENTS.md
+.externalNativeBuild
