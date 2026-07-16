@@ -41,6 +41,10 @@ public class DebugNetPermissionActivity extends Activity {
     private void startVpnService() {
         Intent intent = new Intent(this, DebugNetVpnService.class);
         intent.setAction(DebugNetVpnService.ACTION_START);
-        startService(intent);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            startForegroundService(intent);
+        } else {
+            startService(intent);
+        }
     }
 }

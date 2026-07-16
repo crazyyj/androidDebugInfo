@@ -4,19 +4,32 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 
 /**
- * 解析 TUN 设备中的 IP 包头，只提取展示与过滤需要的可拷贝字段。
+ * 解析 TUN 设备中的 IP 包头，产出 {@link RawPacket}。
+ * 不再直接产出 DebugNetEvent；负载偏移与 TCP 序列号交给上游重组器使用。
  */
 final class IpPacketParser {
 
-    private static final int PROTOCOL_ICMP = 1;
-    private static final int PROTOCOL_TCP = 6;
-    private static final int PROTOCOL_UDP = 17;
-    private static final int PROTOCOL_ICMP_V6 = 58;
+    /** TCP 标志位 */
+    static final int TCP_FIN = 0x01;
+    static final int TCP_SYN = 0x02;
+    static final int TCP_RST = 0x04;
+    static final int TCP_PSH = 0x08;
+    static final int TCP_ACK = 0x10;
+
+    /** VPN 本地地址，用于判定上下行：源地址等于本地地址视为上行。 */
+    static final String VPN_LOCAL_ADDRESS_V4 = "10.88.0.2";
 
     private IpPacketParser() {
     }
 
-    static DebugNetEvent parse(byte[] packet, int length, TrafficDirection direction) {
+    /**
+     * 解析单个 IP 包。返回 null 表示包太短或无法识别。
+     *
+     * @param packet    原始字节数组，调用方保证有效长度为 length
+     * @param length    有效长度
+     * @param direction 可选方向提示；为 null 时按源地址自动判定
+     */
+    static RawPacket parse(byte[] packet, int length, TrafficDirection direction) {
         if (packet == null || length <= 0) {
             return null;
         }
@@ -27,12 +40,10 @@ final class IpPacketParser {
         if (version == 6) {
             return parseIpv6(packet, length, direction);
         }
-        DebugNetEvent unknown = new DebugNetEvent(direction, "IP" + version, "unknown", 0, "unknown", 0, length);
-        unknown.setRequestPath("/unknown");
-        return unknown;
+        return null;
     }
 
-    private static DebugNetEvent parseIpv4(byte[] packet, int length, TrafficDirection direction) {
+    private static RawPacket parseIpv4(byte[] packet, int length, TrafficDirection directionHint) {
         if (length < 20) {
             return null;
         }
@@ -43,63 +54,87 @@ final class IpPacketParser {
         int protocol = packet[9] & 0xFF;
         String source = ipv4ToString(packet, 12);
         String destination = ipv4ToString(packet, 16);
+        TrafficDirection direction = resolveDirection(directionHint, source);
         int sourcePort = 0;
         int destinationPort = 0;
-        if ((protocol == PROTOCOL_TCP || protocol == PROTOCOL_UDP) && length >= headerLength + 4) {
+        long tcpSeq = 0L;
+        int tcpFlags = 0;
+        int payloadOffset = 0;
+        int payloadLength = 0;
+        if ((protocol == RawPacket.PROTOCOL_TCP || protocol == RawPacket.PROTOCOL_UDP) && length >= headerLength + 4) {
             sourcePort = readUnsignedShort(packet, headerLength);
             destinationPort = readUnsignedShort(packet, headerLength + 2);
         }
-        DebugNetEvent event = new DebugNetEvent(direction, protocolName(protocol), source, sourcePort, destination,
-                destinationPort, length);
-        // 仅做非常轻量的 path 猜测：HTTP 请求行通常以 "GET /path" 开头，但由于当前没有 TCP 重组，命中率有限。
-        if (protocol == PROTOCOL_TCP) {
-            String path = tryParseHttpPath(packet, headerLength);
-            if (path != null) {
-                event.setRequestPath(path);
+        if (protocol == RawPacket.PROTOCOL_TCP && length >= headerLength + 20) {
+            tcpSeq = readUnsignedInt(packet, headerLength + 4);
+            tcpFlags = packet[headerLength + 13] & 0xFF;
+            int dataOffset = ((packet[headerLength + 12] >> 4) & 0x0F) * 4;
+            int transportHeaderEnd = headerLength + dataOffset;
+            if (dataOffset >= 20 && transportHeaderEnd <= length) {
+                payloadOffset = transportHeaderEnd;
+                payloadLength = length - transportHeaderEnd;
             }
-            if (destinationPort == 443 || sourcePort == 443) {
-                event.setHttps(true);
-            }
+        } else if (protocol == RawPacket.PROTOCOL_UDP && length >= headerLength + 8) {
+            int transportHeaderEnd = headerLength + 8;
+            payloadOffset = transportHeaderEnd;
+            payloadLength = length - transportHeaderEnd;
         }
-        return event;
+        return new RawPacket(4, protocol, source, sourcePort, destination, destinationPort,
+                tcpSeq, tcpFlags, payloadOffset, payloadLength, length, direction);
     }
 
-    private static DebugNetEvent parseIpv6(byte[] packet, int length, TrafficDirection direction) {
+    private static RawPacket parseIpv6(byte[] packet, int length, TrafficDirection directionHint) {
         if (length < 40) {
             return null;
         }
         int protocol = packet[6] & 0xFF;
         String source = ipv6ToString(packet, 8);
         String destination = ipv6ToString(packet, 24);
+        TrafficDirection direction = resolveDirection(directionHint, source);
         int sourcePort = 0;
         int destinationPort = 0;
-        if ((protocol == PROTOCOL_TCP || protocol == PROTOCOL_UDP) && length >= 44) {
+        long tcpSeq = 0L;
+        int tcpFlags = 0;
+        int payloadOffset = 0;
+        int payloadLength = 0;
+        if ((protocol == RawPacket.PROTOCOL_TCP || protocol == RawPacket.PROTOCOL_UDP) && length >= 44) {
             sourcePort = readUnsignedShort(packet, 40);
             destinationPort = readUnsignedShort(packet, 42);
         }
-        DebugNetEvent event = new DebugNetEvent(direction, protocolName(protocol), source, sourcePort, destination,
-                destinationPort, length);
-        if (protocol == PROTOCOL_TCP) {
-            String path = tryParseHttpPath(packet, 40);
-            if (path != null) {
-                event.setRequestPath(path);
+        if (protocol == RawPacket.PROTOCOL_TCP && length >= 60) {
+            tcpSeq = readUnsignedInt(packet, 44);
+            tcpFlags = packet[53] & 0xFF;
+            int dataOffset = ((packet[52] >> 4) & 0x0F) * 4;
+            int transportHeaderEnd = 40 + dataOffset;
+            if (dataOffset >= 20 && transportHeaderEnd <= length) {
+                payloadOffset = transportHeaderEnd;
+                payloadLength = length - transportHeaderEnd;
             }
-            if (destinationPort == 443 || sourcePort == 443) {
-                event.setHttps(true);
-            }
+        } else if (protocol == RawPacket.PROTOCOL_UDP && length >= 48) {
+            int transportHeaderEnd = 48;
+            payloadOffset = transportHeaderEnd;
+            payloadLength = length - transportHeaderEnd;
         }
-        return event;
+        return new RawPacket(6, protocol, source, sourcePort, destination, destinationPort,
+                tcpSeq, tcpFlags, payloadOffset, payloadLength, length, direction);
     }
 
-    private static String protocolName(int protocol) {
+    private static TrafficDirection resolveDirection(TrafficDirection hint, String sourceAddress) {
+        if (hint != null) {
+            return hint;
+        }
+        return VPN_LOCAL_ADDRESS_V4.equals(sourceAddress) ? TrafficDirection.UPLOAD : TrafficDirection.DOWNLOAD;
+    }
+
+    static String protocolName(int protocol) {
         switch (protocol) {
-            case PROTOCOL_ICMP:
+            case RawPacket.PROTOCOL_ICMP:
                 return "ICMP";
-            case PROTOCOL_TCP:
+            case RawPacket.PROTOCOL_TCP:
                 return "TCP";
-            case PROTOCOL_UDP:
+            case RawPacket.PROTOCOL_UDP:
                 return "UDP";
-            case PROTOCOL_ICMP_V6:
+            case RawPacket.PROTOCOL_ICMP_V6:
                 return "ICMPv6";
             default:
                 return "P" + protocol;
@@ -111,6 +146,16 @@ final class IpPacketParser {
             return 0;
         }
         return ((packet[offset] & 0xFF) << 8) | (packet[offset + 1] & 0xFF);
+    }
+
+    private static long readUnsignedInt(byte[] packet, int offset) {
+        if (offset < 0 || packet.length < offset + 4) {
+            return 0L;
+        }
+        return ((long) (packet[offset] & 0xFF) << 24)
+                | ((long) (packet[offset + 1] & 0xFF) << 16)
+                | ((long) (packet[offset + 2] & 0xFF) << 8)
+                | ((long) (packet[offset + 3] & 0xFF));
     }
 
     private static String ipv4ToString(byte[] packet, int offset) {
@@ -134,57 +179,5 @@ final class IpPacketParser {
         } catch (UnknownHostException ignored) {
             return "unknown";
         }
-    }
-
-    private static String tryParseHttpPath(byte[] packet, int transportHeaderOffset) {
-        if (packet == null) {
-            return null;
-        }
-        int tcpHeaderMinOffset = transportHeaderOffset + 20;
-        if (packet.length < tcpHeaderMinOffset) {
-            return null;
-        }
-        int dataOffset = ((packet[transportHeaderOffset + 12] >> 4) & 0x0F) * 4;
-        if (dataOffset < 20) {
-            return null;
-        }
-        int payloadOffset = transportHeaderOffset + dataOffset;
-        if (payloadOffset < 0 || payloadOffset >= packet.length) {
-            return null;
-        }
-        int limit = Math.min(packet.length, payloadOffset + 256);
-        // Request line: METHOD SP PATH SP HTTP/1.1
-        int methodEnd = indexOfByte(packet, payloadOffset, limit, (byte) ' ');
-        if (methodEnd <= payloadOffset) {
-            return null;
-        }
-        // 支持常见方法
-        int methodLen = methodEnd - payloadOffset;
-        if (!(methodLen == 3 || methodLen == 4 || methodLen == 5 || methodLen == 6 || methodLen == 7)) {
-            return null;
-        }
-        int pathStart = methodEnd + 1;
-        if (pathStart >= limit) {
-            return null;
-        }
-        int pathEnd = indexOfByte(packet, pathStart, limit, (byte) ' ');
-        if (pathEnd <= pathStart) {
-            return null;
-        }
-        // 必须以 '/' 开头，避免误判
-        if (packet[pathStart] != (byte) '/') {
-            return null;
-        }
-        // HTTP request line is ASCII-compatible.
-        return new String(packet, pathStart, pathEnd - pathStart, java.nio.charset.StandardCharsets.US_ASCII);
-    }
-
-    private static int indexOfByte(byte[] data, int start, int end, byte target) {
-        for (int i = start; i < end; i++) {
-            if (data[i] == target) {
-                return i;
-            }
-        }
-        return -1;
     }
 }

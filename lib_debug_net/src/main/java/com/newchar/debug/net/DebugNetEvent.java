@@ -30,6 +30,9 @@ public final class DebugNetEvent {
     private int statusCode = -1;
     private boolean https;
     private boolean decrypted;
+    private String method = "";
+    private String contentType = "";
+    private long durationMs;
     private String host = "";
     private String requestPath = "";
     private String requestHeadersText = "";
@@ -126,6 +129,32 @@ public final class DebugNetEvent {
 
     public void setDecrypted(boolean decrypted) {
         this.decrypted = decrypted;
+        refreshTexts();
+    }
+
+    public String getMethod() {
+        return method;
+    }
+
+    public void setMethod(String method) {
+        this.method = method == null ? "" : method;
+        refreshTexts();
+    }
+
+    public String getContentType() {
+        return contentType;
+    }
+
+    public void setContentType(String contentType) {
+        this.contentType = contentType == null ? "" : contentType;
+    }
+
+    public long getDurationMs() {
+        return durationMs;
+    }
+
+    public void setDurationMs(long durationMs) {
+        this.durationMs = durationMs;
         refreshTexts();
     }
 
@@ -231,6 +260,11 @@ public final class DebugNetEvent {
         StringBuilder builder = new StringBuilder();
         builder.append(formatTime(requestTimeMillis));
         builder.append(' ');
+        boolean hasMethod = method != null && !method.isEmpty();
+        if (hasMethod) {
+            builder.append(method);
+            builder.append(' ');
+        }
         if (statusCode > 0) {
             builder.append(statusCode);
         } else if (failureReason != null && !failureReason.isEmpty()) {
@@ -250,7 +284,9 @@ public final class DebugNetEvent {
         builder.append(direction == TrafficDirection.DOWNLOAD ? "DOWN" : "UP");
         builder.append(' ');
         builder.append(protocol);
-        builder.append(https ? "/HTTPS" : "");
+        if (https) {
+            builder.append("/HTTPS");
+        }
         builder.append(' ');
         builder.append(formatEndpoint(sourceAddress, sourcePort));
         builder.append(" -> ");
@@ -265,11 +301,11 @@ public final class DebugNetEvent {
     }
 
     private String resolveSummaryTarget() {
-        if (requestPath != null && !requestPath.isEmpty()) {
-            return requestPath;
-        }
         if (host != null && !host.isEmpty()) {
             return host;
+        }
+        if (requestPath != null && !requestPath.isEmpty()) {
+            return requestPath;
         }
         if (destinationAddress != null && !destinationAddress.isEmpty()) {
             return formatEndpoint(destinationAddress, destinationPort);

@@ -52,7 +52,7 @@ public final class DebugNetMonitor {
         }
         Intent intent = new Intent(appContext, DebugNetVpnService.class);
         intent.setAction(DebugNetVpnService.ACTION_START);
-        appContext.startService(intent);
+        startVpnServiceCompat(appContext, intent);
         return START_OK;
     }
 
@@ -63,7 +63,20 @@ public final class DebugNetMonitor {
         Context appContext = context.getApplicationContext();
         Intent intent = new Intent(appContext, DebugNetVpnService.class);
         intent.setAction(DebugNetVpnService.ACTION_STOP);
-        appContext.startService(intent);
+        // 服务已在运行，直接用 startService() 发送 stop action，避免 startForegroundService 触发 RemoteServiceException
+        try {
+            appContext.startService(intent);
+        } catch (Exception e) {
+            // 服务已销毁时忽略
+        }
+    }
+
+    private static void startVpnServiceCompat(Context appContext, Intent intent) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            appContext.startForegroundService(intent);
+        } else {
+            appContext.startService(intent);
+        }
     }
 
     public static void addListener(DebugNetTrafficListener listener) {

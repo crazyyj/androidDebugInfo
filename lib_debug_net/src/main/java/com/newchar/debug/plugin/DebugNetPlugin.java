@@ -1,6 +1,8 @@
 package com.newchar.debug.plugin;
 
+import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Color;
 import android.os.Handler;
 import android.text.InputType;
@@ -29,6 +31,7 @@ import com.newchar.debug.net.DebugNetConfig;
 import com.newchar.debug.net.DebugNetEvent;
 import com.newchar.debug.net.DebugNetMonitor;
 import com.newchar.debug.net.DebugNetTrafficListener;
+import com.newchar.debug.net.DebugNetDetailActivity;
 import com.newchar.debug.utils.HandleWrapper;
 
 import java.util.ArrayList;
@@ -61,6 +64,8 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
     private NetPluginAdapter mAdapter;
     private TextView mStatusView;
     private TextView mTrafficView;
+    private EditText mFilterInput;
+    private String mFilterText = "";
     private CheckBox mHttpDecodeCheckBox;
     private CheckBox mHttpsDecodeCheckBox;
     private EditText mCertPathInput;
@@ -109,8 +114,44 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
     }
 
     @Override
+    public CharSequence onCopyText() {
+        if (mEvents.isEmpty()) {
+            return null;
+        }
+        return buildEventsText();
+    }
+
+    @Override
+    public Intent onCreateShareIntent() {
+        CharSequence text = onCopyText();
+        if (TextUtils.isEmpty(text)) {
+            return null;
+        }
+        Intent intent = new Intent(Intent.ACTION_SEND);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_TEXT, text);
+        return intent;
+    }
+
+    @Override
+    public void onClear() {
+        mEvents.clear();
+        if (mAdapter != null) {
+            mAdapter.notifyDataSetChanged();
+        }
+    }
+
+    @Override
     public void onUnload() {
         DebugNetMonitor.removeListener(mTrafficListener);
+        // 防御性停止：只在 context 有效且 VPN 还在运行时才停止
+        if (mAppContext != null && DebugNetMonitor.isRunning()) {
+            try {
+                DebugNetMonitor.stop(mAppContext);
+            } catch (Throwable t) {
+                // 服务已销毁时 startService 会失败，忽略即可
+            }
+        }
         HandleWrapper.getMainHandler().removeCallbacks(mFlushTask);
         stopTrafficMonitor();
         mPendingEvents.clear();
@@ -152,6 +193,28 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
         mRootView.addView(mListView, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    private CharSequence buildEventsText() {
+        StringBuilder builder = new StringBuilder();
+        for (int i = mEvents.size() - 1; i >= 0; i--) {
+            DebugNetEvent event = mEvents.get(i);
+            if (matchesFilter(event)) {
+                builder.append(event.getDisplayText());
+                builder.append('\n');
+            }
+        }
+        return builder.toString();
+    }
+
+    private boolean matchesFilter(DebugNetEvent event) {
+        if (mFilterText.isEmpty()) {
+            return true;
+        }
+        String summary = event.getSummaryText().toLowerCase();
+        String host = (event.getHost() == null ? "" : event.getHost()).toLowerCase();
+        String path = (event.getRequestPath() == null ? "" : event.getRequestPath()).toLowerCase();
+        return summary.contains(mFilterText) || host.contains(mFilterText) || path.contains(mFilterText);
     }
 
     private void startTrafficMonitor() {
@@ -395,9 +458,48 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
         LinearLayout configRoot = new LinearLayout(context);
         configRoot.setOrientation(LinearLayout.VERTICAL);
 
+        // 过滤栏
         LinearLayout actionBar = new LinearLayout(context);
-        actionBar.setGravity(Gravity.CENTER_VERTICAL);
         actionBar.setOrientation(LinearLayout.HORIZONTAL);
+
+        mFilterInput = new EditText(context);
+        mFilterInput.setHint("过滤: host/path");
+        mFilterInput.setSingleLine();
+        mFilterInput.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                mFilterText = s.toString().trim().toLowerCase();
+                if (mAdapter != null) {
+                    mAdapter.notifyDataSetChanged();
+                }
+            }
+
+            @Override
+            public void afterTextChanged(android.text.Editable s) {
+            }
+        });
+        actionBar.addView(mFilterInput, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 3.0f));
+
+        Button clearFilterButton = new Button(context);
+        clearFilterButton.setText("x");
+        clearFilterButton.setOnClickListener(v -> {
+            mFilterInput.setText("");
+            mFilterText = "";
+            if (mAdapter != null) {
+                mAdapter.notifyDataSetChanged();
+            }
+        });
+        actionBar.addView(clearFilterButton, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // 操作按钮
+        LinearLayout opBar = new LinearLayout(context);
+        opBar.setOrientation(LinearLayout.HORIZONTAL);
 
         Button startButton = new Button(context);
         startButton.setText("启动VPN");
@@ -422,6 +524,8 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
                     break;
             }
         });
+        opBar.addView(startButton, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
 
         Button stopButton = new Button(context);
         stopButton.setText("停止");
@@ -429,6 +533,8 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
             DebugNetMonitor.stop(context);
             updateStatus();
         });
+        opBar.addView(stopButton, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
 
         Button clearButton = new Button(context);
         clearButton.setText("清空");
@@ -438,13 +544,8 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
                 mAdapter.notifyDataSetChanged();
             }
         });
-
-        actionBar.addView(startButton, new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        actionBar.addView(stopButton, new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        actionBar.addView(clearButton, new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        opBar.addView(clearButton, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
 
         mStatusView = new TextView(context);
         mStatusView.setTextColor(Color.DKGRAY);
@@ -458,8 +559,9 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
         mTrafficView.setPadding(12, 12, 12, 12);
 
         configRoot.addView(actionBar, matchWrap());
-        configRoot.addView(settingsLayout, matchWrap());
+        configRoot.addView(opBar, matchWrap());
         configRoot.addView(mStatusView, matchWrap());
+        configRoot.addView(settingsLayout, matchWrap());
         configRoot.addView(mTrafficView, matchWrap());
         return configRoot;
     }
@@ -484,6 +586,16 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
             }
         }
 
+        private boolean matches(DebugNetEvent event) {
+            if (mFilterText.isEmpty()) {
+                return true;
+            }
+            String summary = event.getSummaryText().toLowerCase();
+            String host = (event.getHost() == null ? "" : event.getHost()).toLowerCase();
+            String path = (event.getRequestPath() == null ? "" : event.getRequestPath()).toLowerCase();
+            return summary.contains(mFilterText) || host.contains(mFilterText) || path.contains(mFilterText);
+        }
+
         @Override
         public int getViewTypeCount() {
             return 2;
@@ -496,7 +608,13 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
 
         @Override
         public int getCount() {
-            return 1 + mEventList.size();
+            int filtered = 0;
+            for (DebugNetEvent event : mEventList) {
+                if (matches(event)) {
+                    filtered++;
+                }
+            }
+            return 1 + filtered;
         }
 
         @Override
@@ -504,7 +622,17 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
             if (position == 0) {
                 return null;
             }
-            return mEventList.get(position - 1);
+            int matched = 0;
+            for (int i = 0; i < mEventList.size(); i++) {
+                DebugNetEvent event = mEventList.get(i);
+                if (matches(event)) {
+                    if (matched == position - 1) {
+                        return event;
+                    }
+                    matched++;
+                }
+            }
+            return null;
         }
 
         @Override
@@ -527,13 +655,36 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
                 textView.setPadding(padding, padding, padding, padding);
                 textView.setTextSize(13f);
             }
-            int index = position - 1;
-            if (index >= 0 && index < mEventList.size()) {
-                DebugNetEvent event = mEventList.get(index);
+            textView.setTag(null);
+            DebugNetEvent event = (DebugNetEvent) getItem(position);
+            if (event != null) {
                 textView.setText(event.getSummaryText());
                 textView.setTextColor(event.getTextColor());
+                DebugNetEvent finalEvent = event;
+                textView.setOnClickListener(v -> {
+                    Activity activity = getActivityFromContext();
+                    if (activity != null) {
+                        DebugNetDetailActivity.showFrom(activity, finalEvent);
+                    }
+                });
             }
             return textView;
+        }
+
+        private Activity getActivityFromContext() {
+            Context ctx = mContext;
+            while (ctx != null) {
+                if (ctx instanceof Activity) {
+                    return (Activity) ctx;
+                }
+                if (ctx instanceof android.view.ContextThemeWrapper) {
+                    android.view.ContextThemeWrapper wrapper = (android.view.ContextThemeWrapper) ctx;
+                    ctx = wrapper.getBaseContext();
+                    continue;
+                }
+                break;
+            }
+            return null;
         }
     }
 }
