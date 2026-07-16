@@ -8,22 +8,20 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.Socket;
-import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 /**
- * VPN 流量转发器。捕获 TUN 中的 IP 包，转发到真实网络，并将响应写回 TUN。
+ * VPN 流量转发器。只关注实际数据传输（忽略 TCP 握手细节）。
  *
- * 核心机制：
- * 1. UDP（含 DNS）：DatagramSocket 发请求 → 真实网络 → 构造 IP+UDP 响应包写回 TUN
- * 2. TCP：先处理 SYN/SYN-ACK 握手（写回 TUN），然后用 protect() 排除的 Socket 代理转发 payload
- *
- * 注意：转发用的 Socket 必须用 VpnService.protect() 排除出 VPN，否则会被重定向回 TUN 造成死循环。
+ * 工作流：
+ * 1. UDP：转发到真实网络，响应写回 TUN，输出 DNS 事件
+ * 2. TCP（带 payload）：通过 protect() Socket 代理转发
+ *    - 成功：服务器响应写回 TUN，输出 [OK] 事件
+ *    - 失败：连接失败/超时，输出 [FAIL] 事件
  */
 final class PacketForwarder {
 
@@ -39,15 +37,13 @@ final class PacketForwarder {
                 return t;
             });
 
-    private final ConcurrentHashMap<String, TcpProxySession> tcpSessions = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, HttpForwardSession> sessions = new ConcurrentHashMap<>();
 
     PacketForwarder(VpnService vpnService) {
         this.vpnService = vpnService;
     }
 
-    /**
-     * 转发 UDP 包到真实网络，并将响应写回 TUN。
-     */
+    /** 转发 UDP 包到真实网络，并将响应写回 TUN。 */
     DebugNetEvent forwardUdp(RawPacket raw, byte[] packet) {
         byte[] payload = extractPayload(raw, packet);
         if (payload == null || payload.length == 0) {
@@ -62,7 +58,6 @@ final class PacketForwarder {
         DatagramSocket socket = null;
         try {
             socket = new DatagramSocket();
-            // 关键：用 protect() 排除出 VPN，否则被重定向回 TUN 造成死循环
             if (vpnService != null) {
                 vpnService.protect(socket);
             }
@@ -80,7 +75,7 @@ final class PacketForwarder {
             if (responsePacket != null) {
                 VpnServiceHolder.writeToTun(responsePacket);
             }
-            // 返回 DNS 事件（如果这是 DNS 流量）
+            // DNS 事件
             if (raw.getDestinationPort() == 53 || raw.getSourcePort() == 53) {
                 return DnsPacketParser.parse(payload, raw);
             }
@@ -97,96 +92,29 @@ final class PacketForwarder {
     }
 
     /**
-     * 处理 TCP 包。区分握手阶段和 payload 阶段。
+     * 处理 TCP 包。只处理带 payload 的数据包（忽略纯握手包）。
      */
     DebugNetEvent handleTcp(RawPacket raw, byte[] packet) {
-        int flags = raw.getTcpFlags();
+        // 只处理带 payload 的数据包
+        if (!raw.hasPayload()) {
+            return null;
+        }
         String key = raw.getSourceAddress() + ':' + raw.getSourcePort() + '|'
                 + raw.getDestinationAddress() + ':' + raw.getDestinationPort();
-
-        if ((flags & IpPacketParser.TCP_RST) != 0) {
-            tcpSessions.remove(key);
-            return null;
+        HttpForwardSession session = sessions.get(key);
+        if (session == null) {
+            session = new HttpForwardSession(raw.getSourceAddress(), raw.getSourcePort(),
+                    raw.getDestinationAddress(), raw.getDestinationPort());
+            sessions.put(key, session);
         }
-
-        // 1. 处理 SYN（无 payload，需要回复 SYN-ACK 建立连接）
-        if (!raw.hasPayload() && (flags & IpPacketParser.TCP_SYN) != 0 && (flags & IpPacketParser.TCP_ACK) == 0) {
-            DebugNetEvent event = new DebugNetEvent(raw.getDirection(), "TCP",
-                    raw.getSourceAddress(), raw.getSourcePort(),
-                    raw.getDestinationAddress(), raw.getDestinationPort(),
-                    raw.getTotalLength());
-            event.setSummaryText("[SYN] " + raw.getDestinationAddress() + ':' + raw.getDestinationPort());
-            event.setDisplayText("[SYN] " + raw.getDestinationAddress() + ':' + raw.getDestinationPort());
-            VpnServiceHolder.dispatchEvent(event);
-            // 回复 SYN-ACK（写回 TUN）
-            writeSynAck(raw.getSourceAddress(), raw.getSourcePort(),
-                    raw.getDestinationAddress(), raw.getDestinationPort(), raw.getTcpSequence());
-            return null; // SYN 已 dispatch，避免 captureLoop 重复 dispatch
-        }
-
-        // 2. 处理 ACK（客户端确认 SYN-ACK 的连接确认包）
-        if (!raw.hasPayload() && (flags & IpPacketParser.TCP_ACK) != 0 && (flags & IpPacketParser.TCP_SYN) == 0) {
-            // 连接建立成功，创建会话
-            TcpProxySession session = tcpSessions.get(key);
-            if (session == null) {
-                session = new TcpProxySession(raw.getSourceAddress(), raw.getSourcePort(),
-                        raw.getDestinationAddress(), raw.getDestinationPort());
-                tcpSessions.put(key, session);
-            }
-            // 派发连接建立事件
-            DebugNetEvent event = new DebugNetEvent(raw.getDirection(), "TCP",
-                    raw.getSourceAddress(), raw.getSourcePort(),
-                    raw.getDestinationAddress(), raw.getDestinationPort(), 0);
-            event.setSummaryText("[CONN] " + raw.getDestinationAddress() + ':' + raw.getDestinationPort());
-            event.setDisplayText("[CONN] " + raw.getDestinationAddress() + ':' + raw.getDestinationPort());
-            VpnServiceHolder.dispatchEvent(event);
-            return null; // CONN 已 dispatch，避免 captureLoop 重复 dispatch
-        }
-
-        // 3. 处理带 payload 的包（HTTP 请求等）
-        if (raw.hasPayload()) {
-            TcpProxySession session = tcpSessions.get(key);
-            if (session == null) {
-                session = new TcpProxySession(raw.getSourceAddress(), raw.getSourcePort(),
-                        raw.getDestinationAddress(), raw.getDestinationPort());
-                tcpSessions.put(key, session);
-            }
-            return session.forward(raw, packet);
-        }
-
-        // 4. 其他情况（FIN 等）
-        if ((flags & IpPacketParser.TCP_FIN) != 0) {
-            tcpSessions.remove(key);
-            return null;
-        }
-
-        return null;
-    }
-
-    /** 构造并写回 TUN 的 SYN-ACK 包 */
-    private void writeSynAck(String srcAddr, int srcPort, String dstAddr, int dstPort, long clientSeq) {
-        try {
-            InetAddress src = InetAddress.getByName(dstAddr);
-            InetAddress dst = InetAddress.getByName("10.88.0.2");
-            long serverSeq = 0; // 简化：服务端 seq 从 0 开始
-            int tcpFlags = IpPacketParser.TCP_SYN | IpPacketParser.TCP_ACK;
-            byte[] packet = PacketForwarder.buildIpv4TcpPacket(
-                    src.getAddress(), dst.getAddress(),
-                    dstPort, srcPort, serverSeq, clientSeq + 1,
-                    new byte[0], 0, 0, tcpFlags);
-            if (packet != null) {
-                VpnServiceHolder.writeToTun(packet);
-            }
-        } catch (Throwable t) {
-            // 构造失败忽略
-        }
+        return session.forward(raw, packet);
     }
 
     void shutdown() {
-        for (TcpProxySession s : tcpSessions.values()) {
+        for (HttpForwardSession s : sessions.values()) {
             s.close();
         }
-        tcpSessions.clear();
+        sessions.clear();
         executor.shutdownNow();
     }
 
@@ -285,7 +213,19 @@ final class PacketForwarder {
         return packet;
     }
 
-    /** 构造 TCP 包（IP+TCP+payload） */
+    private static void computeIpChecksum(byte[] header, int headerLength) {
+        int sum = 0;
+        for (int i = 0; i < headerLength - 2; i += 2) {
+            sum += (header[i] & 0xFF) << 8 | (header[i + 1] & 0xFF);
+        }
+        sum = (sum >>> 16) + (sum & 0xFFFF);
+        sum += sum >>> 16;
+        short chk = (short) ~sum;
+        header[10] = (byte) (chk & 0xFF);
+        header[11] = (byte) ((chk >> 8) & 0xFF);
+    }
+
+    /** 构造 TCP 响应包（IP+TCP+payload），用于将服务器响应写回 TUN。 */
     static byte[] buildIpv4TcpPacket(byte[] srcBytes, byte[] dstBytes,
             int srcPort, int dstPort, long tcpSeq, long tcpAck,
             byte[] payload, int offset, int length, int tcpFlags) {
@@ -335,18 +275,6 @@ final class PacketForwarder {
         return packet;
     }
 
-    private static void computeIpChecksum(byte[] header, int headerLength) {
-        int sum = 0;
-        for (int i = 0; i < headerLength - 2; i += 2) {
-            sum += (header[i] & 0xFF) << 8 | (header[i + 1] & 0xFF);
-        }
-        sum = (sum >>> 16) + (sum & 0xFFFF);
-        sum += sum >>> 16;
-        short chk = (short) ~sum;
-        header[10] = (byte) (chk & 0xFF);
-        header[11] = (byte) ((chk >> 8) & 0xFF);
-    }
-
     private static void computeTcpChecksum(byte[] packet, int ipHdrLen,
             int tcpHdrLen, int payloadLen, byte[] srcIp, byte[] dstIp) {
         int sum = 0;
@@ -375,17 +303,16 @@ final class PacketForwarder {
         packet[checksumOffset + 1] = (byte) ((chk >> 8) & 0xFF);
     }
 
-    /** 单次 TCP 代理会话。用 protect() 排除的 Socket 连接真实服务器。 */
-    private final class TcpProxySession {
+    /** 单次 HTTP 数据转发会话。 */
+    private final class HttpForwardSession {
         private final String srcAddr;
         private final int srcPort;
         private final String dstAddr;
         private final int dstPort;
         private volatile Socket socket;
         private volatile boolean closed;
-        private long clientSeq;
 
-        TcpProxySession(String srcAddr, int srcPort, String dstAddr, int dstPort) {
+        HttpForwardSession(String srcAddr, int srcPort, String dstAddr, int dstPort) {
             this.srcAddr = srcAddr;
             this.srcPort = srcPort;
             this.dstAddr = dstAddr;
@@ -396,18 +323,24 @@ final class PacketForwarder {
             if (closed) {
                 return null;
             }
-            clientSeq = raw.getTcpSequence();
             byte[] payload = extractPayload(raw, packet);
             if (payload == null || payload.length == 0) {
                 return null;
             }
+            // 同步返回一个数据事件（不等待服务器响应）
+            DebugNetEvent event = new DebugNetEvent(raw.getDirection(), "TCP",
+                    srcAddr, srcPort, dstAddr, dstPort, payload.length);
+            event.setSummaryText("[DATA] " + dstAddr + ':' + dstPort + ' ' + payload.length + 'B');
+            event.setDisplayText("[DATA] " + dstAddr + ':' + dstPort + ' ' + payload.length + 'B');
+            VpnServiceHolder.dispatchEvent(event);
+
+            // 异步转发到服务器
             executor.execute(() -> {
                 try {
                     Socket s = socket;
                     if (s == null) {
                         try {
                             s = new Socket();
-                            // 关键：用 protect() 排除出 VPN，否则被重定向回 TUN 造成死循环
                             if (vpnService != null) {
                                 vpnService.protect(s);
                             }
@@ -415,12 +348,25 @@ final class PacketForwarder {
                             s.connect(new java.net.InetSocketAddress(dstAddr, dstPort), RESPONSE_TIMEOUT_MS);
                             socket = s;
                         } catch (Exception e) {
-                            // 连接失败（DNS 解析失败、端口不可达等）
+                            // 连接失败
+                            DebugNetEvent failEvent = new DebugNetEvent(
+                                    TrafficDirection.DOWNLOAD, "TCP",
+                                    dstAddr, dstPort, srcAddr, srcPort, 0);
+                            failEvent.setSummaryText("[FAIL] 连接失败: " + dstAddr + ':' + dstPort);
+                            failEvent.setDisplayText("[FAIL] 连接失败: " + dstAddr + ':' + dstPort);
+                            VpnServiceHolder.dispatchEvent(failEvent);
                             return;
                         }
                     }
                     if (s.isClosed() || !s.isConnected()) {
                         socket = null;
+                        // 连接断开
+                        DebugNetEvent failEvent = new DebugNetEvent(
+                                TrafficDirection.DOWNLOAD, "TCP",
+                                dstAddr, dstPort, srcAddr, srcPort, 0);
+                        failEvent.setSummaryText("[FAIL] 连接已断开: " + dstAddr + ':' + dstPort);
+                        failEvent.setDisplayText("[FAIL] 连接已断开: " + dstAddr + ':' + dstPort);
+                        VpnServiceHolder.dispatchEvent(failEvent);
                         return;
                     }
                     // 发送 payload 到服务器
@@ -432,37 +378,43 @@ final class PacketForwarder {
                     java.io.InputStream in = s.getInputStream();
                     int bytesRead = in.read(respBuffer);
                     if (bytesRead <= 0) {
+                        // 超时或无响应
+                        DebugNetEvent failEvent = new DebugNetEvent(
+                                TrafficDirection.DOWNLOAD, "TCP",
+                                dstAddr, dstPort, srcAddr, srcPort, 0);
+                        failEvent.setSummaryText("[FAIL] 无响应: " + dstAddr + ':' + dstPort);
+                        failEvent.setDisplayText("[FAIL] 无响应: " + dstAddr + ':' + dstPort);
+                        VpnServiceHolder.dispatchEvent(failEvent);
                         return;
                     }
+                    // 成功：构造响应包写回 TUN
                     byte[] response = new byte[bytesRead];
                     System.arraycopy(respBuffer, 0, response, 0, bytesRead);
-                    // 构造响应包（服务器 → 10.88.0.2）
                     InetAddress respSrc = InetAddress.getByName(dstAddr);
                     InetAddress respDst = InetAddress.getByName("10.88.0.2");
-                    long respSeq = clientSeq + payload.length;
-                    long respAck = clientSeq + payload.length;
-                    int tcpFlags = IpPacketParser.TCP_ACK;
-                    if (bytesRead > 0) {
-                        tcpFlags |= IpPacketParser.TCP_PSH;
-                    }
-                    byte[] responsePacket = buildIpv4TcpPacket(
+                    byte[] responsePacket = PacketForwarder.buildIpv4TcpPacket(
                             respSrc.getAddress(), respDst.getAddress(),
-                            dstPort, srcPort, respSeq, respAck,
-                            response, 0, bytesRead, tcpFlags);
+                            dstPort, srcPort, 0, payload.length,
+                            response, 0, bytesRead,
+                            IpPacketParser.TCP_ACK | IpPacketParser.TCP_PSH);
                     if (responsePacket != null) {
                         VpnServiceHolder.writeToTun(responsePacket);
                     }
-                    // 派发响应事件给监控
-                    DebugNetEvent event = new DebugNetEvent(
-                            TrafficDirection.DOWNLOAD,
-                            "TCP",
-                            dstAddr, dstPort, "10.88.0.2", srcPort,
-                            responsePacket != null ? responsePacket.length : bytesRead);
-                    event.setSummaryText("[FWD] " + dstAddr + ':' + dstPort + ' ' + bytesRead + 'B');
-                    event.setDisplayText("[FWD] " + dstAddr + ':' + dstPort + ' ' + bytesRead + 'B');
-                    VpnServiceHolder.dispatchEvent(event);
+                    // 成功事件
+                    DebugNetEvent okEvent = new DebugNetEvent(
+                            TrafficDirection.DOWNLOAD, "TCP",
+                            dstAddr, dstPort, "10.88.0.2", srcPort, bytesRead);
+                    okEvent.setSummaryText("[OK] " + bytesRead + 'B' + " from " + dstAddr + ':' + dstPort);
+                    okEvent.setDisplayText("[OK] " + bytesRead + 'B' + " from " + dstAddr + ':' + dstPort);
+                    VpnServiceHolder.dispatchEvent(okEvent);
                 } catch (IOException e) {
                     // 连接失败或已关闭
+                    DebugNetEvent failEvent = new DebugNetEvent(
+                            TrafficDirection.DOWNLOAD, "TCP",
+                            dstAddr, dstPort, srcAddr, srcPort, 0);
+                    failEvent.setSummaryText("[FAIL] " + e.getClass().getSimpleName());
+                    failEvent.setDisplayText("[FAIL] " + e.getClass().getSimpleName());
+                    VpnServiceHolder.dispatchEvent(failEvent);
                 } finally {
                     if (socket != null && !socket.isClosed()) {
                         try {
@@ -473,11 +425,7 @@ final class PacketForwarder {
                     }
                 }
             });
-            // 同步返回一个占位事件用于监控回显
-            DebugNetEvent event = new DebugNetEvent(raw.getDirection(), "TCP",
-                    srcAddr, srcPort, dstAddr, dstPort, payload.length);
-            event.setSummaryText("[REQ] " + dstAddr + ':' + dstPort + ' ' + payload.length + 'B');
-            event.setDisplayText("[REQ] " + dstAddr + ':' + dstPort + ' ' + payload.length + 'B');
+
             return event;
         }
 
