@@ -17,7 +17,6 @@ import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ListView;
-import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -32,6 +31,7 @@ import com.newchar.debug.net.DebugNetEvent;
 import com.newchar.debug.net.DebugNetMonitor;
 import com.newchar.debug.net.DebugNetTrafficListener;
 import com.newchar.debug.net.DebugNetDetailActivity;
+import com.newchar.debug.net.DebugNetCertificatePickerActivity;
 import com.newchar.debug.utils.HandleWrapper;
 
 import java.util.ArrayList;
@@ -66,14 +66,37 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
     private TextView mTrafficView;
     private EditText mFilterInput;
     private String mFilterText = "";
+    private Button mVpnToggleBtn;
     private CheckBox mHttpDecodeCheckBox;
     private CheckBox mHttpsDecodeCheckBox;
-    private EditText mCertPathInput;
+    private LinearLayout mCertRow;
+    private Button mCertButton;
     private EditText mCertPasswordInput;
-    private Spinner mKeystoreTypeSpinner;
+    private TextView mCertTypeTextView;
     private Context mAppContext;
     private TrafficMonitor mTrafficMonitor;
     private final Handler mMainHandler = HandleWrapper.getMainHandler();
+
+    /** 从当前可见的 View 上下文中提取 Activity（用于启动新 Activity）。 */
+    @SuppressWarnings("unused")
+    private Activity getActivityFromContext() {
+        if (mRootView == null || mRootView.getContext() == null) {
+            return null;
+        }
+        Context ctx = mRootView.getContext();
+        while (ctx != null) {
+            if (ctx instanceof Activity) {
+                return (Activity) ctx;
+            }
+            if (ctx instanceof android.view.ContextThemeWrapper) {
+                android.view.ContextThemeWrapper wrapper = (android.view.ContextThemeWrapper) ctx;
+                ctx = wrapper.getBaseContext();
+                continue;
+            }
+            break;
+        }
+        return null;
+    }
 
     @Override
     public String id() {
@@ -103,6 +126,7 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
     @Override
     public void onShow() {
         updateStatus();
+        restoreInputs();
         startTrafficMonitor();
         ViewUtils.setVisibility(mRootView, View.VISIBLE);
     }
@@ -165,11 +189,13 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
         mStatusView = null;
         mTrafficView = null;
         mAdapter = null;
+        mVpnToggleBtn = null;
         mHttpDecodeCheckBox = null;
         mHttpsDecodeCheckBox = null;
-        mCertPathInput = null;
+        mCertRow = null;
+        mCertButton = null;
         mCertPasswordInput = null;
-        mKeystoreTypeSpinner = null;
+        mCertTypeTextView = null;
         mAppContext = null;
         if (mTrafficMonitor != null) {
             mTrafficMonitor.release();
@@ -183,7 +209,7 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
         }
         mRootView = new LinearLayout(context);
         mRootView.setOrientation(LinearLayout.VERTICAL);
-        mRootView.setBackgroundColor(0x4D808080);
+        mRootView.setBackgroundColor(0x80808080);
 
         mListView = new ListView(context);
         mAdapter = new NetPluginAdapter(context, mEvents);
@@ -272,11 +298,19 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
         DebugNetConfig config = DebugNetMonitor.getConfig();
         String https = config.isHttpsDecodeEnabled() ? "HTTPS解码开" : "HTTPS解码关";
         String http = config.isHttpDecodeEnabled() ? "HTTP解析开" : "HTTP解析关";
-        String path = TextUtils.isEmpty(config.getCertificatePath()) ? "证书未配置" : config.getCertificatePath();
+        String certInfo = TextUtils.isEmpty(config.getCertificatePath())
+                ? "证书未配置"
+                : "证书: " + config.getCertificatePath();
         if (DebugNetMonitor.isRunning()) {
-            mStatusView.setText("VPN监听中 | " + http + " | " + https + " | " + path);
+            mStatusView.setText("VPN监听中 | " + http + " | " + https + " | " + certInfo);
+            if (mVpnToggleBtn != null) {
+                mVpnToggleBtn.setText("停止VPN");
+            }
         } else {
-            mStatusView.setText("VPN未启动 | " + http + " | " + https + " | " + path);
+            mStatusView.setText("VPN未启动 | " + http + " | " + https + " | " + certInfo);
+            if (mVpnToggleBtn != null) {
+                mVpnToggleBtn.setText("启动VPN");
+            }
         }
     }
 
@@ -330,50 +364,68 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
         settingsLayout.setOrientation(LinearLayout.VERTICAL);
         settingsLayout.setPadding(12, 12, 12, 12);
 
-        mHttpDecodeCheckBox = new CheckBox(context);
-        mHttpDecodeCheckBox.setText("解析HTTP摘要");
-        settingsLayout.addView(mHttpDecodeCheckBox, matchWrap());
-
+        // HTTPS 解码
         mHttpsDecodeCheckBox = new CheckBox(context);
-        mHttpsDecodeCheckBox.setText("启用HTTPS解码配置");
+        mHttpsDecodeCheckBox.setText("HTTPS解码");
+        mHttpsDecodeCheckBox.setOnCheckedChangeListener((button, isChecked) -> {
+            if (mCertRow != null) {
+                ViewUtils.setVisibility(mCertRow, isChecked ? View.VISIBLE : View.GONE);
+            }
+            applyConfigFromInputs();
+        });
         settingsLayout.addView(mHttpsDecodeCheckBox, matchWrap());
 
-        TextView certPathLabel = new TextView(context);
-        certPathLabel.setText("证书绝对路径");
-        settingsLayout.addView(certPathLabel, matchWrap());
+        // 证书行（HTTPS 启用时显示）
+        mCertRow = new LinearLayout(context);
+        mCertRow.setOrientation(LinearLayout.VERTICAL);
+        mCertRow.setPadding(8, 0, 0, 0);
+        mCertRow.setVisibility(View.GONE);
 
-        mCertPathInput = new EditText(context);
-        mCertPathInput.setHint("/data/user/0/xxx/client.p12");
-        mCertPathInput.setSingleLine();
-        settingsLayout.addView(mCertPathInput, matchWrap());
+        // 证书选择 + 密码（同一行）
+        LinearLayout certRow = new LinearLayout(context);
+        certRow.setOrientation(LinearLayout.HORIZONTAL);
 
-        TextView certPasswordLabel = new TextView(context);
-        certPasswordLabel.setText("证书密码");
-        settingsLayout.addView(certPasswordLabel, matchWrap());
+        mCertButton = new Button(context);
+        mCertButton.setOnClickListener(v -> {
+            Activity activity = getActivityFromContext();
+            if (activity != null) {
+                Intent intent = new Intent(activity, DebugNetCertificatePickerActivity.class);
+                activity.startActivity(intent);
+            }
+        });
+        certRow.addView(mCertButton, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 2.0f));
+
+        TextView pwdLabel = new TextView(context);
+        pwdLabel.setText("密码");
+        certRow.addView(pwdLabel, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 0.5f));
 
         mCertPasswordInput = new EditText(context);
         mCertPasswordInput.setSingleLine();
         mCertPasswordInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        settingsLayout.addView(mCertPasswordInput, matchWrap());
+        certRow.addView(mCertPasswordInput, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1.5f));
 
-        TextView keystoreTypeLabel = new TextView(context);
-        keystoreTypeLabel.setText("证书类型");
-        settingsLayout.addView(keystoreTypeLabel, matchWrap());
+        mCertRow.addView(certRow, matchWrap());
 
-        mKeystoreTypeSpinner = new Spinner(context);
-        ArrayAdapter<String> spinnerAdapter = new ArrayAdapter<>(context, android.R.layout.simple_spinner_item,
-                new String[]{DebugNetConfig.KEYSTORE_TYPE_PKCS12, DebugNetConfig.KEYSTORE_TYPE_BKS});
-        spinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        mKeystoreTypeSpinner.setAdapter(spinnerAdapter);
-        settingsLayout.addView(mKeystoreTypeSpinner, matchWrap());
+        // 证书类型（自动识别，只读）
+        mCertTypeTextView = new TextView(context);
+        mCertTypeTextView.setTextColor(Color.GRAY);
+        mCertTypeTextView.setTextSize(11f);
+        mCertTypeTextView.setText("类型: 未选择");
+        mCertRow.addView(mCertTypeTextView, matchWrap());
 
-        Button applyButton = new Button(context);
-        applyButton.setText("应用配置");
-        applyButton.setOnClickListener(v -> {
+        settingsLayout.addView(mCertRow, matchWrap());
+
+        // HTTP 摘要解析
+        mHttpDecodeCheckBox = new CheckBox(context);
+        mHttpDecodeCheckBox.setText("解析HTTP摘要");
+        mHttpDecodeCheckBox.setOnCheckedChangeListener((button, isChecked) -> {
             applyConfigFromInputs();
-            updateStatus();
         });
-        settingsLayout.addView(applyButton, matchWrap());
+        settingsLayout.addView(mHttpDecodeCheckBox, matchWrap());
+
         restoreInputs();
         return settingsLayout;
     }
@@ -385,6 +437,28 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
         DebugNetMonitor.setConfig(readConfigFromStorage());
     }
 
+    private void applyConfigFromInputs() {
+        if (mAppContext == null) {
+            return;
+        }
+        String certPassword = mCertPasswordInput == null ? "" : String.valueOf(mCertPasswordInput.getText());
+        // 证书路径和类型从文件选择器 Activity 写入的 prefs 读取
+        String certPath = (String) KVUtil.get(mAppContext, KEY_CERT_PATH, "");
+        String keystoreType = (String) KVUtil.get(mAppContext, KEY_KEYSTORE_TYPE,
+                DebugNetConfig.KEYSTORE_TYPE_PKCS12);
+        DebugNetConfig config = new DebugNetConfig.Builder()
+                .setHttpDecodeEnabled(mHttpDecodeCheckBox != null && mHttpDecodeCheckBox.isChecked())
+                .setHttpsDecodeEnabled(mHttpsDecodeCheckBox != null && mHttpsDecodeCheckBox.isChecked())
+                .setCertificatePath(certPath)
+                .setCertificatePassword(certPassword)
+                .setKeystoreType(keystoreType)
+                .build();
+        saveConfig(config);
+        DebugNetMonitor.setConfig(config);
+        // 同步密码到 prefs
+        KVUtil.put(mAppContext, KEY_CERT_PASSWORD, certPassword);
+    }
+
     private void restoreInputs() {
         DebugNetConfig config = mAppContext == null ? DebugNetConfig.defaultConfig() : readConfigFromStorage();
         if (mHttpDecodeCheckBox != null) {
@@ -392,46 +466,32 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
         }
         if (mHttpsDecodeCheckBox != null) {
             mHttpsDecodeCheckBox.setChecked(config.isHttpsDecodeEnabled());
-        }
-        if (mCertPathInput != null) {
-            mCertPathInput.setText(config.getCertificatePath());
+            if (mCertRow != null) {
+                ViewUtils.setVisibility(mCertRow, config.isHttpsDecodeEnabled() ? View.VISIBLE : View.GONE);
+            }
         }
         if (mCertPasswordInput != null) {
             mCertPasswordInput.setText(config.getCertificatePassword());
         }
-        if (mKeystoreTypeSpinner != null) {
-            mKeystoreTypeSpinner.setSelection(DebugNetConfig.KEYSTORE_TYPE_BKS.equals(config.getKeystoreType()) ? 1 : 0);
+        // 更新证书按钮和类型显示
+        String certPath = config.getCertificatePath();
+        if (mCertButton != null) {
+            mCertButton.setText(TextUtils.isEmpty(certPath) ? "选择证书" : "证书: " + certPath);
         }
-    }
-
-    private void applyConfigFromInputs() {
-        if (mAppContext == null) {
-            return;
+        if (mCertTypeTextView != null) {
+            mCertTypeTextView.setText("类型: " + config.getKeystoreType()
+                    + (TextUtils.isEmpty(certPath) ? "（未选择）" : ""));
         }
-        DebugNetConfig config = new DebugNetConfig.Builder()
-                .setHttpDecodeEnabled(mHttpDecodeCheckBox != null && mHttpDecodeCheckBox.isChecked())
-                .setHttpsDecodeEnabled(mHttpsDecodeCheckBox != null && mHttpsDecodeCheckBox.isChecked())
-                .setCertificatePath(mCertPathInput == null ? "" : String.valueOf(mCertPathInput.getText()))
-                .setCertificatePassword(mCertPasswordInput == null ? "" : String.valueOf(mCertPasswordInput.getText()))
-                .setKeystoreType(resolveSpinnerType())
-                .build();
-        saveConfig(config);
-        DebugNetMonitor.setConfig(config);
-    }
-
-    private String resolveSpinnerType() {
-        if (mKeystoreTypeSpinner == null || mKeystoreTypeSpinner.getSelectedItem() == null) {
-            return DebugNetConfig.KEYSTORE_TYPE_PKCS12;
+        if (mVpnToggleBtn != null) {
+            mVpnToggleBtn.setText(DebugNetMonitor.isRunning() ? "停止VPN" : "启动VPN");
         }
-        return String.valueOf(mKeystoreTypeSpinner.getSelectedItem());
     }
 
     private void saveConfig(DebugNetConfig config) {
         KVUtil.put(mAppContext, KEY_HTTP_DECODE, config.isHttpDecodeEnabled());
         KVUtil.put(mAppContext, KEY_HTTPS_DECODE, config.isHttpsDecodeEnabled());
-        KVUtil.put(mAppContext, KEY_CERT_PATH, config.getCertificatePath());
         KVUtil.put(mAppContext, KEY_CERT_PASSWORD, config.getCertificatePassword());
-        KVUtil.put(mAppContext, KEY_KEYSTORE_TYPE, config.getKeystoreType());
+        // 证书路径和类型由文件选择器 Activity 写入
     }
 
     private DebugNetConfig readConfigFromStorage() {
@@ -458,7 +518,7 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
         LinearLayout configRoot = new LinearLayout(context);
         configRoot.setOrientation(LinearLayout.VERTICAL);
 
-        // 过滤栏
+        // ── 过滤栏 ──
         LinearLayout actionBar = new LinearLayout(context);
         actionBar.setOrientation(LinearLayout.HORIZONTAL);
 
@@ -497,43 +557,40 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
         actionBar.addView(clearFilterButton, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // 操作按钮
+        // ── VPN 切换 + 清空 ──
         LinearLayout opBar = new LinearLayout(context);
         opBar.setOrientation(LinearLayout.HORIZONTAL);
 
-        Button startButton = new Button(context);
-        startButton.setText("启动VPN");
-        startButton.setOnClickListener(v -> {
-            applyConfigFromInputs();
-            int result = DebugNetMonitor.start(context);
-            switch (result) {
-                case DebugNetMonitor.START_OK:
-                    mStatusView.setText("VPN监听启动中");
-                    break;
-                case DebugNetMonitor.START_NEED_PERMISSION:
-                    Toast.makeText(context, "VPN授权请求已发出，请授权后再次点击启动",
-                            Toast.LENGTH_LONG).show();
-                    mStatusView.setText("等待VPN授权，请授权后再次点击启动");
-                    break;
-                case DebugNetMonitor.START_CONFIG_ERROR:
-                    updateStatus();
-                    break;
-                default:
-                    Toast.makeText(context, "VPN启动失败", Toast.LENGTH_SHORT).show();
-                    updateStatus();
-                    break;
+        mVpnToggleBtn = new Button(context);
+        mVpnToggleBtn.setOnClickListener(v -> {
+            if (DebugNetMonitor.isRunning()) {
+                try {
+                    DebugNetMonitor.stop(context);
+                } catch (Throwable t) {
+                }
+                updateStatus();
+            } else {
+                applyConfigFromInputs();
+                int result = DebugNetMonitor.start(context);
+                switch (result) {
+                    case DebugNetMonitor.START_OK:
+                        updateStatus();
+                        break;
+                    case DebugNetMonitor.START_NEED_PERMISSION:
+                        Toast.makeText(context, "VPN授权请求已发出，请授权后再次点击启动",
+                                Toast.LENGTH_LONG).show();
+                        break;
+                    case DebugNetMonitor.START_CONFIG_ERROR:
+                        updateStatus();
+                        break;
+                    default:
+                        Toast.makeText(context, "VPN启动失败", Toast.LENGTH_SHORT).show();
+                        updateStatus();
+                        break;
+                }
             }
         });
-        opBar.addView(startButton, new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
-
-        Button stopButton = new Button(context);
-        stopButton.setText("停止");
-        stopButton.setOnClickListener(v -> {
-            DebugNetMonitor.stop(context);
-            updateStatus();
-        });
-        opBar.addView(stopButton, new LinearLayout.LayoutParams(0,
+        opBar.addView(mVpnToggleBtn, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
 
         Button clearButton = new Button(context);
@@ -547,12 +604,15 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
         opBar.addView(clearButton, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
 
+        // ── 状态栏 ──
         mStatusView = new TextView(context);
         mStatusView.setTextColor(Color.DKGRAY);
         mStatusView.setPadding(12, 0, 12, 0);
 
+        // ── 设置区 ──
         LinearLayout settingsLayout = buildSettingsLayout(context);
 
+        // ── 流量统计 ──
         mTrafficView = new TextView(context);
         mTrafficView.setTextColor(Color.DKGRAY);
         mTrafficView.setTextSize(13f);

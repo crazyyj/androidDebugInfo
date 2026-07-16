@@ -148,10 +148,16 @@ public class DebugNetVpnService extends VpnService {
                                 DebugNetMonitor.dispatch(tcpEvent);
                             }
                         }
-                        // 也交给 session table 做 HTTP 重组（针对上行 payload）
-                        TcpSessionTable table = mSessionTable;
-                        if (table != null) {
-                            table.handle(raw, packet);
+                        // HTTPS（端口 443/8443）不经过 HTTP 重组，直接 TCP 代理转发
+                        boolean isHttps = raw.getDestinationPort() == 443
+                                || raw.getDestinationPort() == 8443
+                                || raw.getSourcePort() == 443
+                                || raw.getSourcePort() == 8443;
+                        if (!isHttps) {
+                            TcpSessionTable table = mSessionTable;
+                            if (table != null) {
+                                table.handle(raw, packet);
+                            }
                         }
                         break;
                     default:

@@ -10,6 +10,12 @@
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <activity
+            android:name="com.newchar.debug.net.DebugNetCertificatePickerActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <activity
             android:name="com.newchar.debug.net.DebugNetDetailActivity"
             android:excludeFromRecents="true"
             android:exported="false"

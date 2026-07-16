@@ -111,8 +111,6 @@ final class PacketForwarder {
 
         // 1. 处理 SYN（无 payload，需要回复 SYN-ACK 建立连接）
         if (!raw.hasPayload() && (flags & IpPacketParser.TCP_SYN) != 0 && (flags & IpPacketParser.TCP_ACK) == 0) {
-            // 尝试解析 DNS 获取目标主机名（如果有的话）
-            // 这里先只记录连接尝试
             DebugNetEvent event = new DebugNetEvent(raw.getDirection(), "TCP",
                     raw.getSourceAddress(), raw.getSourcePort(),
                     raw.getDestinationAddress(), raw.getDestinationPort(),
@@ -120,11 +118,10 @@ final class PacketForwarder {
             event.setSummaryText("[SYN] " + raw.getDestinationAddress() + ':' + raw.getDestinationPort());
             event.setDisplayText("[SYN] " + raw.getDestinationAddress() + ':' + raw.getDestinationPort());
             VpnServiceHolder.dispatchEvent(event);
-
             // 回复 SYN-ACK（写回 TUN）
             writeSynAck(raw.getSourceAddress(), raw.getSourcePort(),
                     raw.getDestinationAddress(), raw.getDestinationPort(), raw.getTcpSequence());
-            return event;
+            return null; // SYN 已 dispatch，避免 captureLoop 重复 dispatch
         }
 
         // 2. 处理 ACK（客户端确认 SYN-ACK 的连接确认包）
@@ -143,7 +140,7 @@ final class PacketForwarder {
             event.setSummaryText("[CONN] " + raw.getDestinationAddress() + ':' + raw.getDestinationPort());
             event.setDisplayText("[CONN] " + raw.getDestinationAddress() + ':' + raw.getDestinationPort());
             VpnServiceHolder.dispatchEvent(event);
-            return event;
+            return null; // CONN 已 dispatch，避免 captureLoop 重复 dispatch
         }
 
         // 3. 处理带 payload 的包（HTTP 请求等）
