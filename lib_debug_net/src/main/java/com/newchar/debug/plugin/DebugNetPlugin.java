@@ -1,9 +1,11 @@
 package com.newchar.debug.plugin;
 
 import android.app.Activity;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
+import android.os.Bundle;
 import android.os.Handler;
 import android.text.InputType;
 import android.text.TextUtils;
@@ -22,6 +24,8 @@ import android.widget.Toast;
 
 import com.newchar.debug.utils.KVUtil;
 import com.newchar.debug.utils.ViewUtils;
+import com.newchar.debug.router.ResultProxyRouter;
+import com.newchar.debug.router.ResultProxyCallback;
 import com.newchar.debug.api.PluginContext;
 import com.newchar.debug.api.ScreenDisplayPlugin;
 import com.newchar.debug.core.traffic.TrafficInfo;
@@ -54,6 +58,9 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
     private static final String KEY_CERT_PATH = "debug_net_cert_path";
     private static final String KEY_CERT_PASSWORD = "debug_net_cert_password";
     private static final String KEY_KEYSTORE_TYPE = "debug_net_keystore_type";
+
+    private static final int REQUEST_CERT_PICK = 0x5001;
+    private static final int ID_CERT_PICK = 9001;
 
     private final List<DebugNetEvent> mEvents = new ArrayList<>();
     private final ConcurrentLinkedQueue<DebugNetEvent> mPendingEvents = new ConcurrentLinkedQueue<>();
@@ -386,12 +393,28 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
         certRow.setOrientation(LinearLayout.HORIZONTAL);
 
         mCertButton = new Button(context);
+        mCertButton.setMaxLines(2);
+        mCertButton.setEllipsize(android.text.TextUtils.TruncateAt.END);
         mCertButton.setOnClickListener(v -> {
-            Activity activity = getActivityFromContext();
-            if (activity != null) {
-                Intent intent = new Intent(activity, DebugNetCertificatePickerActivity.class);
-                activity.startActivity(intent);
+            // VPN 运行时不允许更换证书
+            if (DebugNetMonitor.isRunning()) {
+                Toast.makeText(context, "VPN 运行中，请先停止 VPN", Toast.LENGTH_SHORT).show();
+                return;
             }
+            Context ctx = getActivityFromContext() == null ? mAppContext : getActivityFromContext();
+            if (ctx == null) {
+                return;
+            }
+            String password = mCertPasswordInput == null ? "" : String.valueOf(mCertPasswordInput.getText());
+            Bundle extras = new Bundle();
+            extras.putString(KEY_CERT_PASSWORD, password);
+            ResultProxyRouter.launchForResult(
+                    ctx,
+                    REQUEST_CERT_PICK,
+                    ID_CERT_PICK,
+                    new ComponentName(ctx, DebugNetCertificatePickerActivity.class),
+                    extras,
+                    new DebugNetCertCallback(ctx));
         });
         certRow.addView(mCertButton, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 2.0f));
@@ -417,6 +440,9 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
         mCertRow.addView(mCertTypeTextView, matchWrap());
 
         settingsLayout.addView(mCertRow, matchWrap());
+
+        // VPN 运行时锁定证书和密码控件
+        setCertControlsEnabled(!DebugNetMonitor.isRunning());
 
         // HTTP 摘要解析
         mHttpDecodeCheckBox = new CheckBox(context);
@@ -475,13 +501,17 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
         }
         // 更新证书按钮和类型显示
         String certPath = config.getCertificatePath();
+        String certFileName = TextUtils.isEmpty(certPath) ? ""
+                : certPath.substring(certPath.lastIndexOf('/') + 1);
         if (mCertButton != null) {
-            mCertButton.setText(TextUtils.isEmpty(certPath) ? "选择证书" : "证书: " + certPath);
+            mCertButton.setText(TextUtils.isEmpty(certPath) ? "选择证书" : "证书: " + certFileName);
         }
         if (mCertTypeTextView != null) {
             mCertTypeTextView.setText("类型: " + config.getKeystoreType()
                     + (TextUtils.isEmpty(certPath) ? "（未选择）" : ""));
         }
+        // VPN 运行时锁定证书和密码控件
+        setCertControlsEnabled(!DebugNetMonitor.isRunning());
         if (mVpnToggleBtn != null) {
             mVpnToggleBtn.setText(DebugNetMonitor.isRunning() ? "停止VPN" : "启动VPN");
         }
@@ -508,6 +538,69 @@ public class DebugNetPlugin extends ScreenDisplayPlugin {
                 .setCertificatePassword(certPassword)
                 .setKeystoreType(keystoreType)
                 .build();
+    }
+
+    /**
+     * 启用/禁用证书和密码控件。
+     * VPN 运行时不允许更换证书和密码，停止后允许重新选择。
+     *
+     * @param enabled true 可编辑，false 锁定
+     */
+    private void setCertControlsEnabled(boolean enabled) {
+        if (mCertButton != null) {
+            mCertButton.setEnabled(enabled);
+            mCertButton.setAlpha(enabled ? 1.0f : 0.5f);
+        }
+        if (mCertPasswordInput != null) {
+            mCertPasswordInput.setEnabled(enabled);
+            mCertPasswordInput.setAlpha(enabled ? 1.0f : 0.5f);
+        }
+    }
+
+    /**
+     * 证书选择器返回数据回调。
+     * 接收路径和类型后写入 KVUtil 持久化，更新 UI 并同步到 VPN 配置。
+     */
+    private final class DebugNetCertCallback implements ResultProxyCallback {
+
+        private final Context mContext;
+
+        DebugNetCertCallback(Context context) {
+            mContext = context;
+        }
+
+        @Override
+        public void onResult(int id, int requestCode, int resultCode, Intent data) {
+            if (id != ID_CERT_PICK || requestCode != REQUEST_CERT_PICK) {
+                return;
+            }
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                String certPath = data.getStringExtra(DebugNetCertificatePickerActivity.EXTRA_CERT_PATH);
+                String keystoreType = data.getStringExtra(DebugNetCertificatePickerActivity.EXTRA_KEYSTORE_TYPE);
+                if (!TextUtils.isEmpty(certPath)) {
+                    // 只显示文件名，不显示全路径
+                    String certFileName = certPath.substring(certPath.lastIndexOf('/') + 1);
+                    // 持久化
+                    KVUtil.put(mContext, KEY_CERT_PATH, certPath);
+                    KVUtil.put(mContext, KEY_KEYSTORE_TYPE, keystoreType);
+                    KVUtil.put(mContext, KEY_HTTPS_DECODE, true);
+                    // 更新 UI
+                    mHttpsDecodeCheckBox.setChecked(true);
+                    ViewUtils.setVisibility(mCertRow, View.VISIBLE);
+                    if (mCertButton != null) {
+                        mCertButton.setText("证书: " + certFileName);
+                    }
+                    if (mCertTypeTextView != null) {
+                        mCertTypeTextView.setText("类型: " + keystoreType);
+                    }
+                    // 同步到 VPN 配置
+                    applyConfigFromInputs();
+                    Toast.makeText(mContext, "证书已选择: " + certPath + "\n类型: " + keystoreType, Toast.LENGTH_LONG).show();
+                    return;
+                }
+            }
+            Toast.makeText(mContext, "证书选择取消或失败", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private static LinearLayout.LayoutParams matchWrap() {

@@ -9,12 +9,13 @@ import java.net.UnknownHostException;
  */
 final class IpPacketParser {
 
-    /** TCP 标志位 */
-    static final int TCP_FIN = 0x01;
-    static final int TCP_SYN = 0x02;
-    static final int TCP_RST = 0x04;
-    static final int TCP_PSH = 0x08;
-    static final int TCP_ACK = 0x10;
+    /** TCP 标志位（标准 RFC 793 布局） */
+    static final int TCP_URG = 0x01;
+    static final int TCP_ACK = 0x02;
+    static final int TCP_PSH = 0x04;
+    static final int TCP_RST = 0x08;
+    static final int TCP_SYN = 0x10;
+    static final int TCP_FIN = 0x20;
 
     /** VPN 本地地址，用于判定上下行：源地址等于本地地址视为上行。 */
     static final String VPN_LOCAL_ADDRESS_V4 = "10.88.0.2";

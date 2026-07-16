@@ -7,9 +7,6 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
 import android.text.TextUtils;
-import android.widget.Toast;
-
-import com.newchar.debug.utils.KVUtil;
 
 import java.io.ByteArrayOutputStream;
 import java.io.FileOutputStream;
@@ -18,11 +15,21 @@ import java.io.InputStream;
 
 /**
  * 系统文件选择器 Activity，用于选择证书文件。
- * 选中后自动读取文件头部字节识别类型（PKCS12/BKS），写入 prefs。
+ * 选中后通过 setResult 返回证书路径和类型给调用方。
+ *
+ * <p>支持两种调用方式：
+ * <ol>
+ * <li>被 {@link com.newchar.debug.router.ResultProxyActivity} 启动：
+ *     通过 setResult 回传路径和类型，由 ResultProxyActivity 透传给插件回调。</li>
+ * <li>直接启动（无调用者）：setResult 被忽略，行为无副作用。</li>
+ * </ol>
  */
 public class DebugNetCertificatePickerActivity extends Activity {
 
     private static final int REQUEST_PICK_CERT = 0x4001;
+
+    public static final String EXTRA_CERT_PATH = "debug_net_cert_path";
+    public static final String EXTRA_KEYSTORE_TYPE = "debug_net_keystore_type";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -34,27 +41,31 @@ public class DebugNetCertificatePickerActivity extends Activity {
         try {
             startActivityForResult(Intent.createChooser(pickIntent, "选择证书文件"), REQUEST_PICK_CERT);
         } catch (Exception e) {
-            Toast.makeText(this, "无可用文件选择器", Toast.LENGTH_LONG).show();
+            setResult(RESULT_CANCELED);
             finish();
         }
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
+        super.onActivityResult(requestCode,resultCode, data);
         if (requestCode == REQUEST_PICK_CERT && resultCode == RESULT_OK && data != null) {
             Uri uri = data.getData();
             if (uri != null) {
                 String filePath = copyFileFromUri(uri);
                 if (filePath != null) {
                     String keystoreType = detectKeystoreType(filePath);
-                    saveCertificateConfig(filePath, keystoreType);
-                    Toast.makeText(this, "证书已选择: " + filePath + "\n类型: " + keystoreType, Toast.LENGTH_LONG).show();
-                } else {
-                    Toast.makeText(this, "证书文件复制失败", Toast.LENGTH_SHORT).show();
+                    // 通过 setResult 回传证书路径和类型
+                    Intent resultIntent = new Intent();
+                    resultIntent.putExtra(EXTRA_CERT_PATH, filePath);
+                    resultIntent.putExtra(EXTRA_KEYSTORE_TYPE, keystoreType);
+                    setResult(RESULT_OK, resultIntent);
+                    finish();
+                    return;
                 }
             }
         }
+        setResult(RESULT_CANCELED);
         finish();
     }
 
@@ -137,15 +148,6 @@ public class DebugNetCertificatePickerActivity extends Activity {
             // 忽略
         }
         return DebugNetConfig.KEYSTORE_TYPE_PKCS12;
-    }
-
-    private void saveCertificateConfig(String filePath, String keystoreType) {
-        String keyCertPath = "debug_net_cert_path";
-        String keyKeystoreType = "debug_net_keystore_type";
-        String keyHttpsDecode = "debug_net_https_decode";
-        KVUtil.put(getApplication(), keyCertPath, filePath);
-        KVUtil.put(getApplication(), keyKeystoreType, keystoreType);
-        KVUtil.put(getApplication(), keyHttpsDecode, true);
     }
 
     private String getFileName(Uri uri, String defaultName) {
