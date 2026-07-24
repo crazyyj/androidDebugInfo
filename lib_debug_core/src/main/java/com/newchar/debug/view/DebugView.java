@@ -8,6 +8,8 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.view.inputmethod.InputMethodManager;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.AttributeSet;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -26,6 +28,7 @@ import com.newchar.debug.api.PluginManager;
 import com.newchar.debug.api.ScreenDisplayPlugin;
 import com.newchar.debug.utils.MoveTouchListener;
 import com.newchar.debug.utils.UIUtils;
+import com.newchar.debug.utils.WifiStatusChecker;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -53,6 +56,12 @@ public class DebugView extends LinearLayout {
 
     private TextView mSwitchModeView;
     private static final int VIEW_ID_SWITCH_MODE_VIEW = View.generateViewId();
+
+    // WiFi 状态 banner
+    private TextView mWifiBanner;
+    private static final int VIEW_ID_WIFI_BANNER = View.generateViewId();
+    private Handler mHandler = new Handler(Looper.getMainLooper());
+    private Runnable mWifiRefreshRunnable;
 
     public static final int BUTTON_PADDING_TOP_BOTTOM = 12;
     public static final int BUTTON_PADDING_LEFT_RIGHT = 10;
@@ -118,6 +127,10 @@ public class DebugView extends LinearLayout {
         titleController.addView(mSwitchModeView);
 
         addView(titleController);
+
+        // WiFi 状态 banner
+        initWifiBanner(context);
+        addView(mWifiBanner);
     }
 
     private void initClearView(Context context) {
@@ -183,6 +196,82 @@ public class DebugView extends LinearLayout {
             showPluginSelectorPopup();
             return true;
         });
+    }
+
+    /**
+     * 初始化 WiFi 状态 banner。
+     */
+    private void initWifiBanner(Context context) {
+        mWifiBanner = new TextView(context);
+        mWifiBanner.setId(VIEW_ID_WIFI_BANNER);
+        mWifiBanner.setGravity(Gravity.CENTER);
+        mWifiBanner.setTextSize(12);
+        mWifiBanner.setPadding(
+                dp2px(context, 8), dp2px(context, 4),
+                dp2px(context, 8), dp2px(context, 4));
+        mWifiBanner.setLayoutParams(new LayoutParams(
+                LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        mWifiBanner.setSingleLine(true);
+        mWifiBanner.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        mWifiBanner.setVisibility(View.GONE);
+
+        // 点击显示详情提示
+        mWifiBanner.setOnClickListener(v -> {
+            String hint = WifiStatusChecker.buildWifiHint(context);
+            Toast.makeText(context, hint, Toast.LENGTH_LONG).show();
+        });
+    }
+
+    /**
+     * 更新 WiFi banner 显示。
+     */
+    private void updateWifiBanner(Context context) {
+        if (mWifiBanner == null) {
+            return;
+        }
+        String hint = WifiStatusChecker.buildWifiHint(context);
+        mWifiBanner.setText(hint);
+
+        if (WifiStatusChecker.isSameWifiAsExpected(context)) {
+            // 同网段，绿色文字
+            mWifiBanner.setTextColor(Color.parseColor("#2E7D32"));
+            mWifiBanner.setBackgroundColor(Color.parseColor("#E8F5E9"));
+            mWifiBanner.setVisibility(View.VISIBLE);
+        } else if (WifiStatusChecker.isWifiConnected(context)) {
+            // 不同网段，黄色警告
+            mWifiBanner.setTextColor(Color.parseColor("#E65100"));
+            mWifiBanner.setBackgroundColor(Color.parseColor("#FFF3E0"));
+            mWifiBanner.setVisibility(View.VISIBLE);
+        } else {
+            // 未连接 WiFi，隐藏
+            mWifiBanner.setVisibility(View.GONE);
+        }
+    }
+
+    /**
+     * 启动/停止 WiFi banner 定时刷新。
+     */
+    private void startWifiRefresh() {
+        if (mWifiRefreshRunnable == null) {
+            mWifiRefreshRunnable = new Runnable() {
+                @Override
+                public void run() {
+                    Context context = getContext();
+                    if (context != null && !isDetached()) {
+                        updateWifiBanner(context);
+                        mHandler.postDelayed(this, 10000);
+                    }
+                }
+            };
+        }
+        mHandler.post(mWifiRefreshRunnable);
+    }
+
+    private void stopWifiRefresh() {
+        if (mWifiRefreshRunnable != null && mHandler != null) {
+            mHandler.removeCallbacks(mWifiRefreshRunnable);
+            mWifiRefreshRunnable = null;
+        }
     }
 
     private void cycleSizeMode() {
@@ -355,6 +444,7 @@ public class DebugView extends LinearLayout {
         }
         registerFocusChangeListener();
         loadPlugin();
+        startWifiRefresh();
     }
 
     @Override
@@ -365,6 +455,7 @@ public class DebugView extends LinearLayout {
         DebugViewStore.detach(this);
         removeAllViews();
         unloadPlugin();
+        stopWifiRefresh();
     }
 
     public <T extends ScreenDisplayPlugin> T getPlugin(Class<T> clazz){
