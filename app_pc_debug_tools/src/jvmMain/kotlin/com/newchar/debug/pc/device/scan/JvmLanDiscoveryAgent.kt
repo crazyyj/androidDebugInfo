@@ -28,8 +28,35 @@ class JvmLanDiscoveryAgent : LanDiscoveryAgent {
 
         val knownEndpoints = state.devices.mapTo(mutableSetOf()) { it.id }
         val semaphore = Semaphore(config.lanMaxParallelHosts)
-        val candidateEndpoints = linkedSetOf<String>()
 
+        // === 阶段 1：优先探测已知的设备无线端点（快速路径）===
+        val knownWirelessEndpoints = state.devices
+            .filterNot { it.isNetworkDevice || it.wirelessEndpoint.isBlank() }
+            .map { it.wirelessEndpoint }
+            .toSet()
+        val fastEndpointMessages = mutableListOf<String>()
+        var fastRefreshRequested = false
+        knownWirelessEndpoints.forEach { endpoint ->
+            if (endpoint in knownEndpoints) {
+                return@forEach
+            }
+            val lastAttempt = lastAttemptAt[endpoint] ?: 0L
+            if (System.currentTimeMillis() - lastAttempt < config.wifiReconnectCooldownMs) {
+                return@forEach
+            }
+            lastAttemptAt[endpoint] = System.currentTimeMillis()
+            val connectResult = executor.adb("connect", endpoint)
+            val output = connectResult.output.ifBlank { connectResult.error }
+            if (connectResult.isSuccess || output.contains("connected to", ignoreCase = true) || output.contains("already connected to", ignoreCase = true)) {
+                fastRefreshRequested = true
+                fastEndpointMessages += "Known IP connect $endpoint success"
+            } else {
+                fastEndpointMessages += "Known IP connect $endpoint failed: $output"
+            }
+        }
+
+        // === 阶段 2：全子网扫描（慢速发现新设备）===
+        val candidateEndpoints = linkedSetOf<String>()
         subnets.flatMap { subnet -> subnet.hosts }
             .map { host ->
                 async {
@@ -43,8 +70,8 @@ class JvmLanDiscoveryAgent : LanDiscoveryAgent {
             .forEach(candidateEndpoints::add)
 
         val now = System.currentTimeMillis()
-        val messages = mutableListOf<String>()
-        var refreshRequested = false
+        val subnetMessages = mutableListOf<String>()
+        var subnetRefreshRequested = false
 
         candidateEndpoints
             .filterNot { it in knownEndpoints }
@@ -57,16 +84,16 @@ class JvmLanDiscoveryAgent : LanDiscoveryAgent {
                 val connectResult = executor.adb("connect", endpoint)
                 val output = connectResult.output.ifBlank { connectResult.error }
                 if (connectResult.isSuccess || output.contains("connected to", ignoreCase = true) || output.contains("already connected to", ignoreCase = true)) {
-                    refreshRequested = true
-                    messages += "LAN connect $endpoint success"
+                    subnetRefreshRequested = true
+                    subnetMessages += "LAN connect $endpoint success"
                 } else {
-                    messages += "LAN connect $endpoint failed: $output"
+                    subnetMessages += "LAN connect $endpoint failed: $output"
                 }
             }
 
         LanDiscoveryResult(
-            refreshRequested = refreshRequested,
-            messages = messages.take(config.maxRecentLanMessages),
+            refreshRequested = fastRefreshRequested || subnetRefreshRequested,
+            messages = (fastEndpointMessages + subnetMessages).take(config.maxRecentLanMessages),
             scannedSubnets = subnets.map { it.label },
             discoveredEndpoints = candidateEndpoints.toList(),
         )
@@ -135,7 +162,8 @@ class JvmLanDiscoveryAgent : LanDiscoveryAgent {
     }
 
     private fun probeHost(host: String, timeoutMs: Int): List<String> {
-        val ports = listOf(5555, 5554)
+        // 扩展端口：5555（标准）、5554（旧版 tcpip）、5556/5557（备用）
+        val ports = listOf(5555, 5554, 5556, 5557)
         return ports.mapNotNull { port ->
             val socket = Socket()
             try {

@@ -351,6 +351,11 @@ data class DeviceScanConfig(
     val maxRecentMdnsMessages: Int = 10,
     val maxRecentLanMessages: Int = 10,
     val maxDiscoveredLanEndpoints: Int = 20,
+    // 心跳 / 保活参数
+    val wifiHeartbeatIntervalMs: Long = 120_000L,
+    val usbDisconnectWaitMs: Long = 5_000L,
+    val wifiReconnectCooldownMs: Long = 30_000L,
+    val reverseLocalPort: Int = 6666,
 )
 
 data class DeviceScanState(
