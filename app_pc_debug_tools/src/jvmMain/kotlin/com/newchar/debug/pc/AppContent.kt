@@ -49,6 +49,8 @@ import com.newchar.debug.pc.config.DesktopAppSettingsStore
 import com.newchar.debug.pc.device.AdbCommon
 import com.newchar.debug.pc.device.AdbDevices
 import com.newchar.debug.pc.device.DeviceInfo
+import com.newchar.debug.pc.device.ConnectionAutoRecover
+import com.newchar.debug.pc.device.HeartbeatManager
 import com.newchar.debug.pc.device.InstalledAppInfo
 import com.newchar.debug.pc.device.LogcatManager
 import com.newchar.debug.pc.device.PackageInspector
@@ -58,6 +60,9 @@ import com.newchar.debug.pc.device.scan.DeviceChangeType
 import com.newchar.debug.pc.device.scan.DeviceScanManager
 import com.newchar.debug.pc.device.scan.JvmDeviceMetadataResolver
 import com.newchar.debug.pc.device.scan.JvmLanDiscoveryAgent
+import com.newchar.debug.pc.device.scan.JvmWifiDetector
+import com.newchar.debug.pc.device.scan.WifiBanner
+import com.newchar.debug.pc.device.scan.WifiBannerDetail
 import com.newchar.debug.pc.executor.AdbCommandExecutor
 import com.newchar.debug.pc.ui.chooseAdbExecutable
 import kotlinx.coroutines.flow.collect
@@ -110,6 +115,8 @@ fun AppContent(
     var showLogcatCollector by remember { mutableStateOf(false) }
     val manuallyDisconnected = remember { mutableStateMapOf<String, DeviceInfo>() }
     var deleteConfirmDevice by remember { mutableStateOf<DeviceInfo?>(null) }
+    var showWifiBannerDetail by remember { mutableStateOf(false) }
+    var wifiBannerVisible by remember { mutableStateOf(true) }
 
     val scope = rememberCoroutineScope()
     val settingsStore = remember { DesktopAppSettingsStore() }
@@ -120,6 +127,14 @@ fun AppContent(
         settingsDraftPath = settings.adbExecutablePath
         manualDeviceHistory = settings.manualDeviceHistory
         settingsLoaded = true
+    }
+
+    // 定时刷新 WiFi 检测状态
+    LaunchedEffect(Unit) {
+        while (true) {
+            JvmWifiDetector.refresh()
+            kotlinx.coroutines.delay(10_000L)
+        }
     }
 
     if (!settingsLoaded) {
@@ -152,6 +167,39 @@ fun AppContent(
     val effectiveAdbPath = remember(executor, adbExecutablePath) { executor.resolveAdbExecutablePath() }
     val scanState by scanManager.state.collectAsState()
     val scannedDevices = scanState.devices
+
+    // USB 断线 → WiFi 自动重连
+    val autoRecover = remember(executor, scanManager, scope) {
+        ConnectionAutoRecover(
+            executor = executor,
+            externalScope = scope,
+            scanManager = scanManager,
+        )
+    }
+    LaunchedEffect(autoRecover) {
+        autoRecover.start()
+    }
+    DisposableEffect(autoRecover) {
+        onDispose { autoRecover.stop() }
+    }
+
+    // 心跳保活 + adb reverse
+    val heartbeatManager = remember(executor, scanManager, scope) {
+        HeartbeatManager(
+            executor = executor,
+            externalScope = scope,
+            scanManager = scanManager,
+            onHeartbeatTimeout = { device ->
+                scope.launch { autoRecover.onHeartbeatTimeout(device.id) }
+            },
+        )
+    }
+    LaunchedEffect(heartbeatManager) {
+        heartbeatManager.start()
+    }
+    DisposableEffect(heartbeatManager) {
+        onDispose { heartbeatManager.stop() }
+    }
 
     val deviceList = remember(scannedDevices, manuallyDisconnected.toMap()) {
         val scannedIds = scannedDevices.mapTo(mutableSetOf()) { it.id }
@@ -229,6 +277,22 @@ fun AppContent(
             .fillMaxSize()
             .background(AppTheme.background),
     ) {
+        // WiFi 连接状态 Banner
+        if (wifiBannerVisible && deviceList.isNotEmpty()) {
+            WifiBanner(
+                devices = deviceList,
+                onToggleVisible = {
+                    if (!showWifiBannerDetail) {
+                        showWifiBannerDetail = true
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .align(Alignment.TopCenter),
+            )
+        }
+
         Row(
             modifier = Modifier.fillMaxSize(),
         ) {
@@ -323,6 +387,7 @@ fun AppContent(
                                     if (deviceToRetain != null) {
                                         manuallyDisconnected[deviceId] = deviceToRetain
                                     }
+                                    autoRecover.markManualDisconnect(deviceId)
                                     toastMessage = if (result.isSuccess) "已断开: $deviceId" else "断开失败: ${result.error.ifBlank { result.output }}"
                                     scanManager.refreshNow()
                                 }
@@ -568,6 +633,14 @@ fun AppContent(
                 executor = executor,
             )
         }
+    }
+
+    // WiFi 连接状态详情面板
+    if (showWifiBannerDetail) {
+        WifiBannerDetail(
+            devices = deviceList,
+            onDismiss = { showWifiBannerDetail = false },
+        )
     }
 
     deleteConfirmDevice?.let { device ->
