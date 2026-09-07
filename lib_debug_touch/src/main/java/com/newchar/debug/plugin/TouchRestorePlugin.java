@@ -27,6 +27,7 @@ public class TouchRestorePlugin extends ScreenDisplayPlugin {
     private LinearLayout mContainerView;
     private Button mTouchRecordButton;
     private Button mScreenStartButton;
+    private Button mStreamStartButton;
     private Button mScreenPauseButton;
     private Button mScreenStopButton;
     private boolean mScreenStartButtonLocked;
@@ -95,6 +96,7 @@ public class TouchRestorePlugin extends ScreenDisplayPlugin {
         mContainerView = null;
         mTouchRecordButton = null;
         mScreenStartButton = null;
+        mStreamStartButton = null;
         mScreenPauseButton = null;
         mScreenStopButton = null;
         mScreenStartButtonLocked = false;
@@ -138,6 +140,13 @@ public class TouchRestorePlugin extends ScreenDisplayPlugin {
                 new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        mStreamStartButton = new Button(context);
+        mStreamStartButton.setTextColor(Color.BLACK);
+        mStreamStartButton.setOnClickListener(view -> startRealtimeStream());
+        mContainerView.addView(mStreamStartButton,
+                new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT));
+
         mScreenPauseButton = new Button(context);
         mScreenPauseButton.setTextColor(Color.BLACK);
         mScreenPauseButton.setOnClickListener(view -> toggleScreenPauseState());
@@ -171,6 +180,16 @@ public class TouchRestorePlugin extends ScreenDisplayPlugin {
         }
         mScreenStartButtonLocked = true;
         ScreenRecordManager.start(mContainerView.getContext());
+        updateButtonState();
+    }
+
+    /** 启动同时保存 MP4 与推送 H264 的实时录屏。 */
+    private void startRealtimeStream() {
+        if (mContainerView == null || mScreenStartButtonLocked || ScreenRecordManager.isRecording()) {
+            return;
+        }
+        mScreenStartButtonLocked = true;
+        ScreenRecordManager.startStream(mContainerView.getContext());
         updateButtonState();
     }
 
@@ -229,6 +248,11 @@ public class TouchRestorePlugin extends ScreenDisplayPlugin {
         if (mScreenStartButton != null) {
             mScreenStartButton.setText(recording ? "屏幕录制已启动" : "启动录制屏幕");
             mScreenStartButton.setTextColor(mScreenStartButtonLocked || recording ? Color.GRAY : Color.BLACK);
+        }
+        if (mStreamStartButton != null) {
+            mStreamStartButton.setText(recording && ScreenRecordManager.isStreaming()
+                    ? "实时推流录屏已启动" : "启动实时推流录屏");
+            mStreamStartButton.setTextColor(mScreenStartButtonLocked || recording ? Color.GRAY : Color.BLACK);
         }
         if (mScreenPauseButton != null) {
             mScreenPauseButton.setText(ScreenRecordManager.isPaused() ? "继续录制屏幕" : "暂停录制屏幕");
