@@ -1,10 +1,12 @@
 import org.gradle.api.tasks.compile.JavaCompile
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
+// kotlin/compose 插件在 settings.gradle 的 pluginManagement 中声明版本，
+// 仅在 PC 工具模块应用，Android 模块编译不加载 kotlin 额外内容。
 plugins {
-    kotlin("multiplatform")
-    kotlin("plugin.serialization")
-    id("org.jetbrains.compose")
+    kotlin("multiplatform") version "1.9.23"
+    kotlin("plugin.serialization") version "1.9.23"
+    id("org.jetbrains.compose") version "1.6.2"
 }
 
 group = "com.newchar.debug"

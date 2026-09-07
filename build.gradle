@@ -22,11 +22,8 @@ buildscript {
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:8.7.3'
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.23"
-        classpath "org.jetbrains.compose:compose-gradle-plugin:1.6.2"
-
-        // NOTE: Do not place your application dependencies here; they belong
-        // in the individual module build.gradle files
+        // NOTE: kotlin 相关插件(kotlin-gradle-plugin/serialization/compose)已收窄到 app_debug_pc_tools 模块内声明，
+        // 避免 Android 模块编译时加载 kotlin 额外内容。
     }
 }
 
@@ -55,13 +52,16 @@ allprojects {
     }
 }
 
-subprojects {
-    configurations.configureEach {
-        resolutionStrategy {
-            force "org.jetbrains.kotlin:kotlin-stdlib:${rootProject.ext.kotlinStdlibVersion}"
-            force "org.jetbrains.kotlin:kotlin-stdlib-common:${rootProject.ext.kotlinStdlibVersion}"
-            force "org.jetbrains.kotlin:kotlin-stdlib-jdk7:${rootProject.ext.kotlinStdlibVersion}"
-            force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:${rootProject.ext.kotlinStdlibVersion}"
+// kotlin-stdlib 版本锁定仅对 app_debug_pc_tools 生效，Android 模块不引入 kotlin 额外内容
+subprojects { sub ->
+    if (sub.name == 'app_debug_pc_tools') {
+        configurations.configureEach {
+            resolutionStrategy {
+                force "org.jetbrains.kotlin:kotlin-stdlib:${rootProject.ext.kotlinStdlibVersion}"
+                force "org.jetbrains.kotlin:kotlin-stdlib-common:${rootProject.ext.kotlinStdlibVersion}"
+                force "org.jetbrains.kotlin:kotlin-stdlib-jdk7:${rootProject.ext.kotlinStdlibVersion}"
+                force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:${rootProject.ext.kotlinStdlibVersion}"
+            }
         }
     }
 }
