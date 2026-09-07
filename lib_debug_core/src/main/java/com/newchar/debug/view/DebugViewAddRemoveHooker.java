@@ -28,10 +28,34 @@ import java.util.WeakHashMap;
  */
 public class DebugViewAddRemoveHooker extends DefaultActivityCallback {
 
+    /**
+     * DebugView 创建后、挂载到 Activity 前的配置回调，
+     * 供外层状态（如 CanNotFlowState）设置 move / layout / focus 处理器。
+     */
+    public interface DebugViewConfigurator {
+
+        /**
+         * 配置新创建的 DebugView。
+         *
+         * @param debugView 待配置的调试视图
+         */
+        void onConfigure(DebugView debugView);
+    }
+
     private final WeakHashMap<Activity, DebugView> mViewRefs;
+    private DebugViewConfigurator mDebugViewConfigurator;
 
     public DebugViewAddRemoveHooker() {
         mViewRefs = new WeakHashMap<>();
+    }
+
+    /**
+     * 设置 DebugView 配置回调，在每次创建新 DebugView 时触发。
+     *
+     * @param configurator 配置回调
+     */
+    public void setDebugViewConfigurator(DebugViewConfigurator configurator) {
+        mDebugViewConfigurator = configurator;
     }
 
     @Override
@@ -59,6 +83,9 @@ public class DebugViewAddRemoveHooker extends DefaultActivityCallback {
         DebugView logView = new DebugView(activity);
         logView.setX(1);
         logView.setY(1);
+        if (mDebugViewConfigurator != null) {
+            mDebugViewConfigurator.onConfigure(logView);
+        }
         return logView;
     }
 
@@ -117,9 +144,10 @@ public class DebugViewAddRemoveHooker extends DefaultActivityCallback {
     }
 
     public void release() {
-        // 卸载全部LogView，后清空容器
-        for (Map.Entry<Activity, DebugView> activityDebugViewEntry : mViewRefs.entrySet()) {
-            detachActivity(activityDebugViewEntry.getKey());
+        // 先快照 key 集合，避免遍历中 remove 触发 ConcurrentModificationException
+        Activity[] activities = mViewRefs.keySet().toArray(new Activity[0]);
+        for (Activity activity : activities) {
+            detachActivity(activity);
         }
         mViewRefs.clear();
     }
