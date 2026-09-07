@@ -89,6 +89,7 @@ public class DebugNetVpnService extends VpnService {
                 DebugNetMonitor.setRunning(false);
                 return;
             }
+            VpnServiceHolder.setService(this);
             VpnServiceHolder.setTunFd(mTunInterface);
             DebugNetMonitor.setRunning(true);
             mSessionTable = new TcpSessionTable(DebugNetMonitor.getConfig(),
