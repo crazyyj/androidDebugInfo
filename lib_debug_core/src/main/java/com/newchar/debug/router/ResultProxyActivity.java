@@ -24,13 +24,19 @@ public class ResultProxyActivity extends Activity {
         int id = intent.getIntExtra(KEY_ID, -1);
         int requestCode = intent.getIntExtra(KEY_REQUEST_CODE, -1);
         ComponentName componentName = intent.getParcelableExtra(KEY_COMPONENT_NAME);
+        String action = intent.getStringExtra(KEY_ACTION);
         Bundle extras = intent.getBundleExtra(KEY_EXTRAS);
-        if (componentName == null) {
+        if (componentName == null && action == null) {
             finish();
             return;
         }
         Intent targetIntent = new Intent();
-        targetIntent.setComponent(componentName);
+        if (action != null) {
+            targetIntent.setAction(action);
+        }
+        if (componentName != null) {
+            targetIntent.setComponent(componentName);
+        }
         if (extras != null) {
             targetIntent.putExtras(extras);
         }
@@ -50,5 +56,6 @@ public class ResultProxyActivity extends Activity {
     private static final String KEY_ID = "result_proxy_id";
     private static final String KEY_REQUEST_CODE = "result_proxy_request_code";
     private static final String KEY_COMPONENT_NAME = "result_proxy_component_name";
+    private static final String KEY_ACTION = "result_proxy_action";
     private static final String KEY_EXTRAS = "result_proxy_extras";
 }

@@ -13,6 +13,20 @@
             android:enabled="false"
             android:exported="false" />
 
+        <receiver
+            android:name="com.newchar.debug.admin.DebugDeviceAdminReceiver"
+            android:enabled="true"
+            android:exported="false"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+                <action android:name="android.app.action.DEVICE_ADMIN_DISABLE_REQUESTED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin_policies" />
+        </receiver>
+
         <service
             android:name="com.newchar.debug.FloatViewService"
             android:enabled="true"

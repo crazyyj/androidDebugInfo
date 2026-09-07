@@ -111,6 +111,7 @@ public class DebugManager {
                     registerOptionalPlugin("com.newchar.debug.plugin.PCToolsPlugin");
                     registerOptionalPlugin("com.newchar.debug.plugin.PageUITopPlugin");
                     registerOptionalPlugin("com.newchar.debug.plugin.MethodFieldMonitorPlugin");
+                    registerOptionalPlugin("com.newchar.debug.plugin.StrictMonitorPlugin");
                     registerOptionalPlugin("com.newchar.debug.plugin.TouchRestorePlugin");
                     registerOptionalPlugin("com.newchar.debug.plugin.DebugNetPlugin");
                     registerOptionalPlugin("com.newchar.debug.plugin.DevicesInfoPlugin");

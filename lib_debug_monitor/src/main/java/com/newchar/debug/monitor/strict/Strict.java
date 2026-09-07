@@ -1,4 +1,4 @@
-package com.newchar.debug.device.devices;
+package com.newchar.debug.monitor.strict;
 
 import android.os.StrictMode;
 
@@ -7,7 +7,7 @@ import com.newchar.debug.utils.DebugUtils;
 /**
  * @author newChar
  * date 2024/11/12
- * @since 严格模式.
+ * @since 严格模式。
  * @since 迭代版本，（以及描述）
  */
 public class Strict {
