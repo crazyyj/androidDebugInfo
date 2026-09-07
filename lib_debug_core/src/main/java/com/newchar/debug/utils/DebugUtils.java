@@ -63,7 +63,7 @@ public class DebugUtils {
         if (app != null && (mAppRef == null || null == mAppRef.get())) {
             mAppRef = new WeakReference<>(app);
         }
-        mKVStore = app.getSharedPreferences(
+        mKVStore = app().getSharedPreferences(
                 name_sp_file, Context.MODE_PRIVATE
         );
     }

@@ -57,11 +57,12 @@ public class DebugView extends LinearLayout {
     private TextView mSwitchModeView;
     private static final int VIEW_ID_SWITCH_MODE_VIEW = View.generateViewId();
 
-    // WiFi 状态 banner
-    private TextView mWifiBanner;
-    private static final int VIEW_ID_WIFI_BANNER = View.generateViewId();
+    // WiFi 连接状态 - 显示在顶部功能区
+    private TextView mWifiStatusView;
+    private static final int VIEW_ID_WIFI_STATUS = View.generateViewId();
     private Handler mHandler = new Handler(Looper.getMainLooper());
     private Runnable mWifiRefreshRunnable;
+    private boolean mAttached;
 
     public static final int BUTTON_PADDING_TOP_BOTTOM = 12;
     public static final int BUTTON_PADDING_LEFT_RIGHT = 10;
@@ -116,21 +117,21 @@ public class DebugView extends LinearLayout {
         titleController.setGravity(Gravity.END);
         titleController.setOnTouchListener(new MoveTouchListener(this, mMoveHandler));
 
+        // WiFi 连接状态 - 显示在最左侧
+        initWifiStatusView(context);
+
         initCopyView(context);
         initFoldView(context);
         initClearView(context);
         initSwitchModeView(context);
 
+        titleController.addView(mWifiStatusView);
         titleController.addView(mCopyView);
         titleController.addView(mFoldView);
         titleController.addView(mClearView);
         titleController.addView(mSwitchModeView);
 
         addView(titleController);
-
-        // WiFi 状态 banner
-        initWifiBanner(context);
-        addView(mWifiBanner);
     }
 
     private void initClearView(Context context) {
@@ -199,57 +200,53 @@ public class DebugView extends LinearLayout {
     }
 
     /**
-     * 初始化 WiFi 状态 banner。
+     * 初始化 WiFi 连接状态文本（在顶部功能区）。
+     * 显示短文本：已连网 / 已连 / 未连
      */
-    private void initWifiBanner(Context context) {
-        mWifiBanner = new TextView(context);
-        mWifiBanner.setId(VIEW_ID_WIFI_BANNER);
-        mWifiBanner.setGravity(Gravity.CENTER);
-        mWifiBanner.setTextSize(12);
-        mWifiBanner.setPadding(
-                dp2px(context, 8), dp2px(context, 4),
-                dp2px(context, 8), dp2px(context, 4));
-        mWifiBanner.setLayoutParams(new LayoutParams(
-                LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-        mWifiBanner.setSingleLine(true);
-        mWifiBanner.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        mWifiBanner.setVisibility(View.GONE);
+    private void initWifiStatusView(Context context) {
+        mWifiStatusView = genTextView(context, VIEW_ID_WIFI_STATUS);
+        mWifiStatusView.setTextSize(12);
+        mWifiStatusView.setPadding(
+                dp2px(context, 10), dp2px(context, 6),
+                dp2px(context, 10), dp2px(context, 6));
+        // 默认未连接
+        updateWifiStatus(context);
 
-        // 点击显示详情提示
-        mWifiBanner.setOnClickListener(v -> {
+        // 点击显示详情
+        mWifiStatusView.setOnClickListener(v -> {
             String hint = WifiStatusChecker.buildWifiHint(context);
             Toast.makeText(context, hint, Toast.LENGTH_LONG).show();
         });
     }
 
     /**
-     * 更新 WiFi banner 显示。
+     * 更新顶部 WiFi 连接状态。
+     * 三个状态，固定长度短文本：
+     * - 已连网 (同网段)
+     * - 已连 (不同网段)
+     * - 未连 (未连接)
      */
-    private void updateWifiBanner(Context context) {
-        if (mWifiBanner == null) {
+    private void updateWifiStatus(Context context) {
+        if (mWifiStatusView == null) {
             return;
         }
-        String hint = WifiStatusChecker.buildWifiHint(context);
-        mWifiBanner.setText(hint);
-
         if (WifiStatusChecker.isSameWifiAsExpected(context)) {
-            // 同网段，绿色文字
-            mWifiBanner.setTextColor(Color.parseColor("#2E7D32"));
-            mWifiBanner.setBackgroundColor(Color.parseColor("#E8F5E9"));
-            mWifiBanner.setVisibility(View.VISIBLE);
+            // 同网段，绿色
+            mWifiStatusView.setText("已连网");
+            mWifiStatusView.setTextColor(Color.parseColor("#2E7D32"));
         } else if (WifiStatusChecker.isWifiConnected(context)) {
-            // 不同网段，黄色警告
-            mWifiBanner.setTextColor(Color.parseColor("#E65100"));
-            mWifiBanner.setBackgroundColor(Color.parseColor("#FFF3E0"));
-            mWifiBanner.setVisibility(View.VISIBLE);
+            // 已连 WiFi 但不同网段，黄色
+            mWifiStatusView.setText("已连");
+            mWifiStatusView.setTextColor(Color.parseColor("#E65100"));
         } else {
-            // 未连接 WiFi，隐藏
-            mWifiBanner.setVisibility(View.GONE);
+            // 未连接
+            mWifiStatusView.setText("未连");
+            mWifiStatusView.setTextColor(Color.GRAY);
         }
     }
 
     /**
-     * 启动/停止 WiFi banner 定时刷新。
+     * 启动/停止 WiFi 状态定时刷新。
      */
     private void startWifiRefresh() {
         if (mWifiRefreshRunnable == null) {
@@ -257,9 +254,9 @@ public class DebugView extends LinearLayout {
                 @Override
                 public void run() {
                     Context context = getContext();
-                    if (context != null && !isDetached()) {
-                        updateWifiBanner(context);
-                        mHandler.postDelayed(this, 10000);
+                    if (context != null && mAttached) {
+                        updateWifiStatus(context);
+                        mHandler.postDelayed(this, 5000);
                     }
                 }
             };
@@ -434,6 +431,7 @@ public class DebugView extends LinearLayout {
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
+        mAttached = true;
         DebugViewStore.attach(this);
         try {
             mPluginContext.mApp = getContext().getApplicationContext();
@@ -450,6 +448,7 @@ public class DebugView extends LinearLayout {
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        mAttached = false;
         unregisterFocusChangeListener();
         dismissPluginSelectorPopup();
         DebugViewStore.detach(this);
