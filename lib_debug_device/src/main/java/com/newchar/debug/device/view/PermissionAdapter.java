@@ -1,4 +1,4 @@
-package com.newchar.debug.device;
+package com.newchar.debug.device.view;
 
 import android.app.Activity;
 import android.content.Context;
@@ -10,6 +10,7 @@ import android.widget.BaseAdapter;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import com.newchar.debug.device.DeviceMonitor;
 import com.newchar.debug.device.bean.PermissionItem;
 import com.newchar.debug.lifecycle.AppLifecycleManager;
 

@@ -1,4 +1,4 @@
-package com.newchar.debug.device;
+package com.newchar.debug.device.view;
 
 import android.content.Context;
 import android.graphics.Color;
@@ -16,8 +16,6 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import com.newchar.debug.device.bean.PermissionItem;
-import com.newchar.debug.device.view.PermissionListView;
-import com.newchar.debug.utils.ViewUtils;
 
 import java.lang.ref.WeakReference;
 import java.util.List;

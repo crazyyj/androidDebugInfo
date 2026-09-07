@@ -11,3 +11,8 @@ AGENTS.md
 local.properties
 /captures
 .externalNativeBuild
+
+# IDE / tool 目录
+.workbuddy/
+.zcode/
+

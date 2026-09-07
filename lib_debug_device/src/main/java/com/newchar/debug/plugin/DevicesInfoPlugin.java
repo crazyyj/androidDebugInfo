@@ -11,7 +11,7 @@ import com.newchar.debug.api.ScreenDisplayPlugin;
 import com.newchar.debug.device.DeviceMonitor;
 import com.newchar.debug.device.DeviceStaticInfoCollector;
 import com.newchar.debug.device.DevicesInfoCallback;
-import com.newchar.debug.device.DevicesInfoView;
+import com.newchar.debug.device.view.DevicesInfoView;
 import com.newchar.debug.device.bean.CPUInfo;
 import com.newchar.debug.device.bean.DevicesInfo;
 import com.newchar.debug.device.bean.MemoryInfo;
