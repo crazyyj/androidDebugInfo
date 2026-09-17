@@ -309,11 +309,11 @@ private fun DeviceSelectionSection(
                         Spacer(Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             AppText(
-                                text = device.model.ifBlank { device.id },
+                                text = device.displayName(),
                                 style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium),
                             )
                             AppText(
-                                text = "${device.id} · ${device.status}",
+                                text = "${device.id} · ${device.connectionStatusLabel()}",
                                 style = TextStyle(fontSize = 12.sp, color = Color(0xFF8A93A3)),
                             )
                         }

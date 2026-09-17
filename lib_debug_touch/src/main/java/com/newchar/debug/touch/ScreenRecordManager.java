@@ -11,6 +11,7 @@ public final class ScreenRecordManager {
     private static volatile boolean sRecording;
     private static volatile boolean sPaused;
     private static volatile boolean sStreaming;
+    private static volatile boolean sCameraStreaming;
 
     private ScreenRecordManager() {
     }
@@ -47,6 +48,35 @@ public final class ScreenRecordManager {
     /** 返回当前录屏是否开启 PC 实时推流。 */
     public static boolean isStreaming() {
         return sStreaming;
+    }
+
+    /** 启动相机预览推流（无需 MediaProjection 授权）。 */
+    public static void startCamera(Context context) {
+        sendAction(context, ScreenRecordService.ACTION_START_CAMERA);
+    }
+
+    /** 停止相机预览推流。 */
+    public static void stopCamera(Context context) {
+        sendAction(context, ScreenRecordService.ACTION_STOP_CAMERA);
+    }
+
+    /** 切换前后摄像头，服务会自动重建相机预览会话。 */
+    public static void switchCamera(Context context) {
+        sendAction(context, ScreenRecordService.ACTION_SWITCH_CAMERA);
+    }
+
+    /** 请求拍摄一张全分辨率照片。 */
+    public static void capturePhoto(Context context) {
+        sendAction(context, ScreenRecordService.ACTION_CAPTURE_PHOTO);
+    }
+
+    /** 返回相机预览推流是否正在运行。 */
+    public static boolean isCameraStreaming() {
+        return sCameraStreaming;
+    }
+
+    static void setCameraStreaming(boolean streaming) {
+        sCameraStreaming = streaming;
     }
 
     static void setRecording(boolean recording) {

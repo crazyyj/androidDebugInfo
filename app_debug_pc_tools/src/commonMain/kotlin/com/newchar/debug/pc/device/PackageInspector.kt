@@ -19,7 +19,6 @@ object PackageInspector {
             return@coroutineScope emptyList()
         }
         val baseApps = parsePackageList(listResult.output)
-            .filterNot { shouldIgnorePackage(it.packageName) }
         if (baseApps.isEmpty()) {
             return@coroutineScope emptyList()
         }
@@ -39,25 +38,27 @@ object PackageInspector {
             .sortedWith(compareBy<InstalledAppInfo> { it.categoryPriority }.thenBy { it.packageName })
     }
 
+    /**
+     * `pm list packages -f [-U]` 的行格式：
+     * `package:/data/app/~~xxx==/com.foo.bar-abc==/base.apk=com.foo.bar uid:10123`
+     *
+     * 注意 APK 路径里可能含 `=`，必须匹配到**最后一个** `=` 之后的包名，
+     * 否则会把 `=/base.apk=com.foo.bar` 当成包名（历史 bug）。
+     */
+    private val PACKAGE_LINE_REGEX = Regex("""^package:(.+?)=([\w.$-]+)(?:\s+uid:(\d+))?\s*$""")
+
     private fun parsePackageList(output: String): List<InstalledAppInfo> {
         return output.lines().mapNotNull { rawLine ->
             val line = rawLine.trim()
             if (!line.startsWith("package:")) {
                 return@mapNotNull null
             }
-            val packageSection = line.removePrefix("package:")
-            val splitIndex = packageSection.indexOf('=')
-            if (splitIndex <= 0) {
-                return@mapNotNull null
-            }
-            val apkPath = packageSection.substring(0, splitIndex).trim()
-            val packageAndUid = packageSection.substring(splitIndex + 1).trim()
-            val parts = packageAndUid.split(Regex("\\s+"))
-            val packageName = parts.firstOrNull().orEmpty()
-            val uid = parts.firstOrNull { it.startsWith("uid:") }
-                ?.substringAfter(':')
-                .orEmpty()
-            if (packageName.isBlank()) {
+            val match = PACKAGE_LINE_REGEX.matchEntire(line) ?: return@mapNotNull null
+            val apkPath = match.groupValues[1].trim()
+            val packageName = match.groupValues[2].trim()
+            val uid = match.groupValues[3].trim()
+            // 兜底：解析结果若不是合法包名（例如路径被当成包名），丢弃该行
+            if (!packageName.isValidPackageName()) {
                 return@mapNotNull null
             }
             InstalledAppInfo(
@@ -128,12 +129,6 @@ object PackageInspector {
             }
         }
         return null
-    }
-
-    private fun shouldIgnorePackage(packageName: String): Boolean {
-        return packageName == "android" ||
-            packageName.startsWith("android.") ||
-            packageName.startsWith("com.android")
     }
 
     private fun isSystemPackagePath(path: String): Boolean {

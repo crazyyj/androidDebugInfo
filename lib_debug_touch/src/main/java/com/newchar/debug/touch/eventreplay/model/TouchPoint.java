@@ -18,6 +18,12 @@ public final class TouchPoint {
     public float size;
     /** 指针 id（MotionEvent 中的 pointerId）。 */
     public int id;
+    /** 原始屏幕横坐标。 */
+    public float rawX;
+    /** 原始屏幕纵坐标。 */
+    public float rawY;
+    /** 是否包含可用于跨 App 注入的原始屏幕坐标。 */
+    public boolean hasRawCoordinates;
 
     public TouchPoint() {
     }
@@ -37,6 +43,10 @@ public final class TouchPoint {
         m.put("p", pressure);
         m.put("s", size);
         m.put("id", id);
+        if (hasRawCoordinates) {
+            m.put("rx", rawX);
+            m.put("ry", rawY);
+        }
         return m;
     }
 
@@ -48,6 +58,9 @@ public final class TouchPoint {
         tp.pressure = asFloat(m.get("p"), 1f);
         tp.size = asFloat(m.get("s"), 1f);
         tp.id = asInt(m.get("id"));
+        tp.hasRawCoordinates = m.containsKey("rx") && m.containsKey("ry");
+        tp.rawX = asFloat(m.get("rx"));
+        tp.rawY = asFloat(m.get("ry"));
         return tp;
     }
 

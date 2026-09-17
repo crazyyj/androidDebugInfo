@@ -89,7 +89,7 @@ object JvmWifiDetector {
     }
 
     /**
-     * 判断设备 IP 是否与 PC 在同一 /24 子网。
+     * 使用 PC 网卡的实际前缀长度，判断设备 IP 是否位于同一 IPv4 子网。
      *
      * @param deviceIp 设备的无线 IP
      * @return 同网段 true，否则 false。PC 无 WiFi 连接时返回 false。
@@ -98,26 +98,20 @@ object JvmWifiDetector {
         if (deviceIp.isBlank() || !isWifiConnected) {
             return false
         }
-        val pcParts = _wifiIp?.split('.')?.map { it.toInt() } ?: return false
-        val deviceParts = deviceIp.split('.')
-        if (pcParts.size != 4 || deviceParts.size != 4) {
-            return false
-        }
-        deviceParts.forEachIndexed { index, part ->
-            val deviceOctet = part.toIntOrNull() ?: return false
-            if (pcParts[index] != deviceOctet) {
-                return false
-            }
-        }
-        return true
+        val pcAddress = ipv4ToInt(_wifiIp.orEmpty()) ?: return false
+        val deviceAddress = ipv4ToInt(deviceIp) ?: return false
+        val prefixLength = _wifiSubnetMask?.toIntOrNull()?.coerceIn(0, 32) ?: return false
+        val mask = if (prefixLength == 0) 0 else -1 shl (32 - prefixLength)
+        return (pcAddress and mask) == (deviceAddress and mask)
     }
 
-    private fun intToIpAddress(value: Int): String {
-        return listOf(
-            value ushr 24 and 0xFF,
-            value ushr 16 and 0xFF,
-            value ushr 8 and 0xFF,
-            value and 0xFF,
-        ).joinToString(separator = ".")
+    /** 将点分十进制 IPv4 地址转为可做掩码比较的 32 位整数。 */
+    private fun ipv4ToInt(ip: String): Int? {
+        val octets = ip.split('.')
+        if (octets.size != 4) return null
+        return octets.fold(0) { value, text ->
+            val octet = text.toIntOrNull()?.takeIf { it in 0..255 } ?: return null
+            value shl 8 or octet
+        }
     }
 }

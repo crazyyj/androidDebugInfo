@@ -132,7 +132,7 @@ fun WifiBannerDetail(
                 usbDevices.forEach { device ->
                     val statusText = buildWifiDeviceStatus(device)
                     AppText(
-                        text = "${device.model.ifBlank { device.id }} — $statusText",
+                        text = "${device.displayName()} — $statusText",
                         style = TextStyle(fontSize = 13.sp, color = AppTheme.textSecondary),
                         maxLines = 1,
                     )
@@ -193,7 +193,7 @@ private fun collectWifiBanners(
     }
     if (differentSubnetDevices.isNotEmpty()) {
         val names = differentSubnetDevices
-            .map { "${it.model.ifBlank { it.id }}(${it.wirelessIp})" }
+            .map { "${it.displayName()}(${it.wirelessIp})" }
             .take(3)
             .joinToString("、")
         val suffix = if (differentSubnetDevices.size > 3) " 等" else ""
@@ -210,7 +210,7 @@ private fun collectWifiBanners(
     }
     if (noWifiDevices.isNotEmpty() && differentSubnetDevices.isEmpty()) {
         val names = noWifiDevices
-            .map { it.model.ifBlank { it.id } }
+            .map(DeviceInfo::displayName)
             .take(3)
             .joinToString("、")
         val suffix = if (noWifiDevices.size > 3) " 等" else ""

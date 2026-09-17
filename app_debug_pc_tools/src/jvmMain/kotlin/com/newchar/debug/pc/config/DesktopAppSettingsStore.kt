@@ -76,6 +76,9 @@ class DesktopAppSettingsStore {
         var adbExecutablePath = ""
         val manualDeviceHistory = mutableListOf<String>()
         var previewAlwaysOnTop = true
+        var cameraAppPackage = "com.newchar.debug.sample"
+        var homeCompactMode = false
+        val pinnedPackagesByDevice = mutableMapOf<String, MutableList<String>>()
         trimmed.lineSequence()
             .map(String::trim)
             .filter(String::isNotBlank)
@@ -90,12 +93,20 @@ class DesktopAppSettingsStore {
                     "adbExecutablePath" -> adbExecutablePath = value
                     "manualDeviceHistory" -> if (value.isNotBlank()) manualDeviceHistory += value
                     "previewAlwaysOnTop" -> previewAlwaysOnTop = value.toBooleanStrictOrNull() ?: true
+                    "cameraAppPackage" -> if (value.isNotBlank()) cameraAppPackage = value
+                    "homeCompactMode" -> homeCompactMode = value.toBooleanStrictOrNull() ?: false
+                    "pinnedPackage" -> parsePinnedPackage(value)?.let { (deviceId, packageName) ->
+                        pinnedPackagesByDevice.getOrPut(deviceId) { mutableListOf() } += packageName
+                    }
                 }
             }
         return AppSettings(
             adbExecutablePath = adbExecutablePath,
             manualDeviceHistory = manualDeviceHistory.distinct(),
             previewAlwaysOnTop = previewAlwaysOnTop,
+            cameraAppPackage = cameraAppPackage,
+            homeCompactMode = homeCompactMode,
+            pinnedPackagesByDevice = pinnedPackagesByDevice.mapValues { (_, packages) -> packages.distinct() },
         )
     }
 
@@ -107,6 +118,21 @@ class DesktopAppSettingsStore {
             append("previewAlwaysOnTop=")
             append(settings.previewAlwaysOnTop)
             append('\n')
+            append("cameraAppPackage=")
+            append(settings.cameraAppPackage.trim())
+            append('\n')
+            append("homeCompactMode=")
+            append(settings.homeCompactMode)
+            append('\n')
+            settings.pinnedPackagesByDevice.toSortedMap().forEach { (deviceId, packageNames) ->
+                packageNames.distinct().sorted().forEach { packageName ->
+                    append("pinnedPackage=")
+                    append(deviceId)
+                    append('\t')
+                    append(packageName)
+                    append('\n')
+                }
+            }
             settings.manualDeviceHistory
                 .map(String::trim)
                 .filter(String::isNotBlank)
@@ -121,5 +147,14 @@ class DesktopAppSettingsStore {
 
     private fun settingsFilePath(): Path {
         return Path(configDirectoryPath(), "settings.properties")
+    }
+
+    /** 解析一条设备应用置顶配置，格式为设备 ID、制表符、应用包名。 */
+    private fun parsePinnedPackage(value: String): Pair<String, String>? {
+        val separator = value.indexOf('\t')
+        if (separator <= 0 || separator == value.lastIndex) return null
+        val deviceId = value.substring(0, separator).trim()
+        val packageName = value.substring(separator + 1).trim()
+        return if (deviceId.isBlank() || packageName.isBlank()) null else deviceId to packageName
     }
 }

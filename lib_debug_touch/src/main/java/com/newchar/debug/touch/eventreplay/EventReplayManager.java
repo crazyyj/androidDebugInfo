@@ -9,6 +9,8 @@ import com.newchar.debug.touch.eventreplay.record.TouchEventRecorder;
 import com.newchar.debug.touch.eventreplay.replay.AccessibilityActionReplayer;
 import com.newchar.debug.touch.eventreplay.replay.ActionStream;
 import com.newchar.debug.touch.eventreplay.replay.TouchToActionConverter;
+import com.newchar.debug.touch.eventreplay.script.InputScript;
+import com.newchar.debug.touch.eventreplay.script.InputScriptConverter;
 
 import java.io.File;
 import java.io.IOException;
@@ -50,6 +52,16 @@ public final class EventReplayManager {
     /** 将录制结果保存为 JSON 文件。 */
     public void saveRecordedEvent(File file) throws IOException {
         mRecorder.saveToFile(file);
+    }
+
+    /** 将当前录制数据转换为 shell agent 脚本并保存。 */
+    public void saveInputScript(File file) throws IOException {
+        InputScriptConverter.convert(mRecorder.getSequence()).writeToFile(file);
+    }
+
+    /** 将指定录制数据转换为可由 PC 执行的 shell agent 脚本。 */
+    public static InputScript toInputScript(RecordedEventSequence sequence) {
+        return InputScriptConverter.convert(sequence);
     }
 
     /** 读取并解析事件序列 JSON（新代码处理事件的入口之一）。 */

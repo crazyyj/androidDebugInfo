@@ -2,6 +2,7 @@ package com.newchar.debug.pc.executor
 
 import com.newchar.debug.pc.device.CommandResult
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
@@ -81,6 +82,25 @@ class AdbCommandExecutor private constructor(
     }.flowOn(Dispatchers.IO)
 
     override suspend fun adb(vararg args: String): CommandResult = execute(*resolveAdbCommand(*args).toTypedArray())
+
+    /** 执行可被协程取消的 ADB 命令；取消时立即销毁对应子进程。 */
+    suspend fun adbCancellable(vararg args: String): CommandResult = withContext(Dispatchers.IO) {
+        val process = createProcessBuilder(resolveAdbCommand(*args)).start()
+        val cancellation = currentCoroutineContext()[Job]?.invokeOnCompletion { process.destroyForcibly() }
+        try {
+            val output = process.inputStream.bufferedReader().use { it.readText() }.trim()
+            val exitCode = process.waitFor()
+            currentCoroutineContext().ensureActive()
+            if (exitCode == 0) CommandResult.success(output) else CommandResult.failure(exitCode, output)
+        } catch (throwable: Throwable) {
+            currentCoroutineContext().ensureActive()
+            CommandResult.failure(-1, throwable.message ?: "ADB 命令执行失败")
+        } finally {
+            cancellation?.dispose()
+            process.destroy()
+            if (process.isAlive) process.destroyForcibly()
+        }
+    }
 
     override fun adbSync(vararg args: String): CommandResult = syncExecute(*resolveAdbCommand(*args).toTypedArray())
 

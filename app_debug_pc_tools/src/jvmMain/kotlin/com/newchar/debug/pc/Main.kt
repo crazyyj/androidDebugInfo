@@ -3,21 +3,62 @@ package com.newchar.debug.pc
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import java.awt.Component
+import java.awt.Point
+import java.awt.datatransfer.DataFlavor
+import java.awt.dnd.DnDConstants
+import java.awt.dnd.DropTarget
+import java.awt.dnd.DropTargetAdapter
+import java.awt.dnd.DropTargetDropEvent
 import java.io.File
 
 private val APP_NAME = "PC Debug Tools"
 private val LOCK_FILE = File(System.getProperty("java.io.tmpdir"), "pc-debug-tools.lock")
+
+/** 创建桌面窗口原生 APK 拖放接收器，并将文件和落点回传给 Compose。 */
+private fun createApkDropTarget(
+    component: Component,
+    onFilesDropped: (List<File>, Point) -> Boolean,
+): DropTarget = DropTarget(component, DnDConstants.ACTION_COPY, object : DropTargetAdapter() {
+    override fun dragEnter(event: java.awt.dnd.DropTargetDragEvent) {
+        if (event.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+            event.acceptDrag(DnDConstants.ACTION_COPY)
+        } else {
+            event.rejectDrag()
+        }
+    }
+
+    override fun drop(event: DropTargetDropEvent) {
+        if (!event.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+            event.rejectDrop()
+            return
+        }
+        event.acceptDrop(DnDConstants.ACTION_COPY)
+        val completed = readDroppedFiles(event)?.let { files -> onFilesDropped(files, event.location) } ?: false
+        event.dropComplete(completed)
+    }
+}, true)
+
+/** 从 AWT 拖放事件中读取本机文件列表。 */
+@Suppress("UNCHECKED_CAST")
+private fun readDroppedFiles(event: DropTargetDropEvent): List<File>? = runCatching {
+    event.transferable.getTransferData(DataFlavor.javaFileListFlavor) as? List<File>
+}.getOrNull()
 
 /** 单实例保护：不允许打开第二个 App，再次打开时让已有 App 获取焦点 */
 private fun ensureSingleInstance() {
@@ -74,6 +115,9 @@ fun main() = application {
     setDockIcon()
 
     var showSettingsDialog by remember { mutableStateOf(false) }
+    var appListDropBounds by remember { mutableStateOf<Rect?>(null) }
+    var apkDropRequest by remember { mutableStateOf<ApkDropRequest?>(null) }
+    var apkDropToken by remember { mutableStateOf(0L) }
 
     val windowState = rememberWindowState(
         width = 1200.dp,
@@ -85,6 +129,27 @@ fun main() = application {
         title = "阿牛群控",
         state = windowState,
     ) {
+        val appListDropHandler by rememberUpdatedState(newValue = { files: List<File>, location: Point ->
+            val apkFile = files.firstOrNull { it.isFile && it.extension.equals("apk", ignoreCase = true) }
+            val insideAppList = appListDropBounds?.contains(Offset(location.x.toFloat(), location.y.toFloat())) == true
+            if (apkFile == null || !insideAppList) {
+                false
+            } else {
+                apkDropToken += 1
+                apkDropRequest = ApkDropRequest(apkFile, apkDropToken)
+                true
+            }
+        })
+        DisposableEffect(window) {
+            val container = window.contentPane
+            val previousDropTarget = container.dropTarget
+            val dropTarget = createApkDropTarget(container) { files, location ->
+                appListDropHandler(files, location)
+            }
+            onDispose {
+                if (container.dropTarget === dropTarget) container.dropTarget = previousDropTarget
+            }
+        }
         MenuBar {
             Menu("设置") {
                 Item("打开设置", onClick = { showSettingsDialog = true })
@@ -98,6 +163,9 @@ fun main() = application {
             AppContent(
                 showSettingsDialog = showSettingsDialog,
                 onDismissSettings = { showSettingsDialog = false },
+                apkDropRequest = apkDropRequest,
+                onApkDropConsumed = { apkDropRequest = null },
+                onAppListDropBoundsChanged = { appListDropBounds = it },
             )
         }
     }

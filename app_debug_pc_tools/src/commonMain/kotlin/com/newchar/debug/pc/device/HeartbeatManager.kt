@@ -13,6 +13,7 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.ServerSocket
 import java.net.Socket
+import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -23,6 +24,9 @@ data class PcMessage(
     val content: String,
     val timestamp: Long = System.currentTimeMillis(),
 )
+
+/** App 通过 PC 通道回传的 WiFi 状态。 */
+data class AppWifiStatus(val enabled: Boolean, val ssid: String)
 
 /**
  * 心跳保活 + adb reverse 管理器。
@@ -46,9 +50,11 @@ class HeartbeatManager(
     // 手机端发送的消息通道
     private val _messages = MutableSharedFlow<PcMessage>(extraBufferCapacity = 64)
     val messages: SharedFlow<PcMessage> = _messages
+    private var wifiCommandHandler: (suspend (String, String, String) -> String)? = null
 
     // 每个设备最近一次心跳时间戳
     private val lastHeartbeatAt = ConcurrentHashMap<String, Long>()
+    private val wifiStatusWaiters = ConcurrentHashMap<String, CompletableDeferred<AppWifiStatus>>()
 
     // TCP Server 用于接收 App reverse 通道的心跳
     private var serverSocket: ServerSocket? = null
@@ -77,8 +83,8 @@ class HeartbeatManager(
         //（SharedFlow 无 replay，启动扫描时已连接的 ADDED 事件可能已发出，需兜底处理）
         scope.launch {
             delay(500) // 等待扫描完成，避免与 startup 扫描竞争
-            val usbDevices = scanManager.state.value.devices.filter { !it.isNetworkDevice }
-            usbDevices.forEach { device ->
+            val connectedDevices = scanManager.state.value.devices
+            connectedDevices.forEach { device ->
                 setupAdbReverse(device)
             }
         }
@@ -89,11 +95,36 @@ class HeartbeatManager(
         stopReverseServer()
     }
 
+    /**
+     * 设置 App 发起 WiFi 操作时的 PC 端执行器。
+     *
+     * @param handler 参数依次为设备 ID、操作名和附加参数，返回协议结果（OK 或 ERROR 开头）
+     */
+    fun setWifiCommandHandler(handler: suspend (String, String, String) -> String) {
+        wifiCommandHandler = handler
+    }
+
     /** 返回设备 App 最近通过 adb reverse 通道联系 PC 的时间；0 表示尚未收到通信。 */
     fun lastContactAt(deviceId: String): Long = lastHeartbeatAt[deviceId] ?: 0L
 
     /** 兼容现有调用方的心跳时间读取接口。 */
     fun getLastHeartbeat(deviceId: String): Long = lastContactAt(deviceId)
+
+    /**
+     * 在 PC 无法读取 WiFi 状态时，请求设备 App 读取系统状态并回传。
+     *
+     * @param device 需要查询的设备
+     * @return App 回传的 WiFi 状态；无回传时为失败结果
+     */
+    suspend fun requestAppWifiStatus(device: DeviceInfo): Result<AppWifiStatus> = runCatching {
+        val waiter = CompletableDeferred<AppWifiStatus>()
+        check(wifiStatusWaiters.putIfAbsent(device.id, waiter) == null) { "WiFi 状态请求正在进行" }
+        try {
+            withTimeout(APP_WIFI_STATUS_TIMEOUT_MS) { waiter.await() }
+        } finally {
+            wifiStatusWaiters.remove(device.id, waiter)
+        }
+    }
 
     // =========================================================================
     // adb reverse 设置
@@ -103,18 +134,12 @@ class HeartbeatManager(
         when (event.type) {
             DeviceChangeType.ADDED -> {
                 val device = event.device
-                if (!device.isNetworkDevice) {
-                    // USB 设备上线 → 设置 adb reverse
-                    scope.launch { setupAdbReverse(device) }
-                }
+                scope.launch { setupAdbReverse(device) }
             }
             DeviceChangeType.REMOVED -> {
                 val device = event.device
-                if (!device.isNetworkDevice) {
-                    // USB 设备下线 → 清除 reverse
-                    scope.launch { teardownAdbReverse(device) }
-                    lastHeartbeatAt.remove(device.id)
-                }
+                scope.launch { teardownAdbReverse(device) }
+                lastHeartbeatAt.remove(device.id)
             }
             else -> Unit
         }
@@ -123,7 +148,7 @@ class HeartbeatManager(
     private suspend fun setupAdbReverse(device: DeviceInfo) {
         val port = config.reverseLocalPort
         try {
-            executor.adb("-s", device.id, "reverse", "tcp:$port", "tcp:$port")
+            executor.adb("-s", device.adbTarget(), "reverse", "tcp:$port", "tcp:$port")
         } catch (t: Throwable) {
             // adb reverse 失败时不影响正常使用
         }
@@ -132,7 +157,7 @@ class HeartbeatManager(
     private suspend fun teardownAdbReverse(device: DeviceInfo) {
         val port = config.reverseLocalPort
         try {
-            executor.adb("-s", device.id, "reverse", "--remove", "tcp:$port")
+            executor.adb("-s", device.adbTarget(), "reverse", "--remove", "tcp:$port")
         } catch (t: Throwable) {
             // ignore
         }
@@ -178,8 +203,7 @@ class HeartbeatManager(
                         val deviceId = parts[1]
                         val timestamp = parts.getOrNull(2)?.toLongOrNull() ?: System.currentTimeMillis()
                         lastHeartbeatAt[deviceId] = timestamp
-                        // 回复 ACK
-                        outStream.writeUTF("ACK")
+                        outStream.writeUTF(buildHeartbeatReply(deviceId))
                         outStream.flush()
                     } else if (parts.size >= 2 && parts[0] == "ONLINE") {
                         // App 上线通知
@@ -201,6 +225,17 @@ class HeartbeatManager(
                         runCatching {
                             _messages.emit(PcMessage(deviceId = deviceId, content = content))
                         }
+                    } else if (parts.size >= 3 && parts[0] == "WIFI_CMD") {
+                        val deviceId = parts[1]
+                        val action = parts[2]
+                        val params = parts.drop(3).joinToString("|")
+                        lastHeartbeatAt[deviceId] = System.currentTimeMillis()
+                        val result = wifiCommandHandler?.invoke(deviceId, action, params)
+                            ?: "ERROR|PC 未启用 WiFi 控制"
+                        outStream.writeUTF("WIFI_RESULT|$deviceId|$result")
+                        outStream.flush()
+                    } else if (parts.size >= 4 && parts[0] == "WIFI_STATUS") {
+                        handleAppWifiStatus(parts, outStream)
                     }
                 }
             }.onFailure {
@@ -215,6 +250,20 @@ class HeartbeatManager(
         clientSockets.forEach { runCatching { it.close() } }
         clientSockets.clear()
     }
+
+    /** 接收 App 的 WiFi 状态回传，并唤醒对应的状态请求。 */
+    private fun handleAppWifiStatus(parts: List<String>, outStream: DataOutputStream) {
+        val deviceId = parts[1]
+        val ssid = runCatching { String(Base64.getUrlDecoder().decode(parts.getOrNull(3).orEmpty())) }.getOrDefault("")
+        wifiStatusWaiters.remove(deviceId)?.complete(AppWifiStatus(parts[2].toBoolean(), ssid))
+        lastHeartbeatAt[deviceId] = System.currentTimeMillis()
+        outStream.writeUTF("ACK")
+        outStream.flush()
+    }
+
+    /** 在对应设备存在等待任务时，将状态读取请求附在本次心跳响应中。 */
+    private fun buildHeartbeatReply(deviceId: String): String =
+        if (wifiStatusWaiters.containsKey(deviceId)) "WIFI_STATUS_REQUEST" else "ACK"
 
     // =========================================================================
     // 心跳循环
@@ -265,6 +314,10 @@ class HeartbeatManager(
             lastHeartbeatAt.remove(deviceId)
             onHeartbeatTimeout(device)
         }
+    }
+
+    private companion object {
+        const val APP_WIFI_STATUS_TIMEOUT_MS = 5_000L
     }
 
     // =========================================================================

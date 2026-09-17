@@ -5,6 +5,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.media.projection.MediaProjectionManager;
 import android.os.Bundle;
+import android.util.Log;
+import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 
@@ -14,6 +16,7 @@ import androidx.annotation.Nullable;
 public class ScreenRecordPermissionActivity extends Activity {
 
     private static final int REQUEST_SCREEN_CAPTURE = 30001;
+    private static final String TAG = "ScreenRecordPermission";
     private boolean mRequestStarted;
 
     @Override
@@ -27,6 +30,9 @@ public class ScreenRecordPermissionActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUEST_SCREEN_CAPTURE && resultCode == RESULT_OK && data != null) {
             ScreenRecordService.start(this, resultCode, data);
+        } else if (requestCode == REQUEST_SCREEN_CAPTURE) {
+            Log.w(TAG, "用户未授予 MediaProjection 权限，无法启动屏幕推流");
+            Toast.makeText(getApplicationContext(), "未授予屏幕录制权限，无法开始推流", Toast.LENGTH_LONG).show();
         }
         finish();
     }

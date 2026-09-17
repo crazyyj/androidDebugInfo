@@ -1,0 +1,68 @@
+{
+  "magic": "LQITS",
+  "version": 1,
+  "scriptId": "google_play_spotify_youtube_login",
+  "name": "Google Play 搜索 Spotify 后进入 YouTube 登录",
+  "sourceWidth": 1080,
+  "sourceHeight": 2400,
+  "targetPackage": "com.android.vending",
+  "steps": [
+    { "id": "launch_google_play", "type": "launch_app", "packageName": "com.android.vending" },
+    { "id": "wait_google_play", "type": "wait", "waitMs": 2500 },
+    { "id": "check_google_play", "type": "package_check", "expectedPackage": "com.android.vending", "timeoutMs": 5000 },
+    {
+      "id": "open_search_tab",
+      "type": "node_tap",
+      "selector": { "text": "搜索" }
+    },
+    { "id": "wait_search_page", "type": "wait", "waitMs": 600 },
+    {
+      "id": "focus_search_input",
+      "type": "node_tap",
+      "selector": { "text": "搜索应用和游戏" }
+    },
+    { "id": "wait_search_input", "type": "wait", "waitMs": 300 },
+    { "id": "type_s", "type": "key", "keyCode": 47 },
+    { "id": "type_p", "type": "key", "keyCode": 44 },
+    { "id": "type_o", "type": "key", "keyCode": 43 },
+    { "id": "type_t", "type": "key", "keyCode": 48 },
+    { "id": "type_i", "type": "key", "keyCode": 37 },
+    { "id": "type_f", "type": "key", "keyCode": 34 },
+    { "id": "type_y", "type": "key", "keyCode": 53 },
+    { "id": "confirm_search", "type": "key", "keyCode": 66 },
+    { "id": "wait_search_result", "type": "wait", "waitMs": 2500 },
+    {
+      "id": "get_app",
+      "type": "node_tap",
+      "selector": { "text": "安装" }
+    },
+    { "id": "wait_after_get", "type": "wait", "waitMs": 1200 },
+    {
+      "id": "open_preview",
+      "type": "node_tap",
+      "selector": { "contentDescription": "第 1 张屏幕截图，共 7 张" }
+    },
+    { "id": "wait_preview", "type": "wait", "waitMs": 1000 },
+    { "id": "exit_preview", "type": "key", "keyCode": 4 },
+    { "id": "wait_app_detail_again", "type": "wait", "waitMs": 500 },
+    { "id": "exit_app_detail", "type": "key", "keyCode": 4 },
+    { "id": "wait_search_result_again", "type": "wait", "waitMs": 500 },
+    { "id": "exit_search_result", "type": "key", "keyCode": 4 },
+    { "id": "wait_google_play_home", "type": "wait", "waitMs": 500 },
+    { "id": "exit_google_play", "type": "key", "keyCode": 4 },
+    { "id": "launch_youtube", "type": "launch_app", "packageName": "com.google.android.youtube" },
+    { "id": "wait_youtube", "type": "wait", "waitMs": 2500 },
+    { "id": "check_youtube", "type": "package_check", "expectedPackage": "com.google.android.youtube", "timeoutMs": 5000 },
+    {
+      "id": "open_youtube_me",
+      "type": "node_tap",
+      "selector": { "contentDescription": "我" }
+    },
+    { "id": "wait_youtube_me", "type": "wait", "waitMs": 1000 },
+    {
+      "id": "open_youtube_login",
+      "type": "node_tap",
+      "selector": { "text": "登录" }
+    }
+  ]
+}

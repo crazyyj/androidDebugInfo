@@ -4,7 +4,15 @@
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
     <application>
 
@@ -12,6 +20,12 @@
             android:name="com.newchar.debug.DebugPanelActivity"
             android:enabled="false"
             android:exported="false" />
+
+        <activity
+            android:name="com.newchar.debug.router.ResultProxyActivity"
+            android:enabled="true"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <receiver
             android:name="com.newchar.debug.admin.DebugDeviceAdminReceiver"
@@ -25,6 +39,16 @@
             <meta-data
                 android:name="android.app.device_admin"
                 android:resource="@xml/device_admin_policies" />
+        </receiver>
+
+        <receiver
+            android:name="com.newchar.debug.utils.WifiScheduleReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.newchar.debug.action.WIFI_SCHEDULE_CONNECT" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
         </receiver>
 
         <service

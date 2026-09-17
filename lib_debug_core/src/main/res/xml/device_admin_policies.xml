@@ -9,6 +9,6 @@
         <expire-password />
         <encrypted-storage />
         <disable-camera />
-        <disable-keyguard />
+        <disable-keyguard-features />
     </uses-policies>
 </device-admin>

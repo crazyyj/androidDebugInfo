@@ -1,15 +1,11 @@
 package com.newchar.debug.view;
 
 import android.annotation.SuppressLint;
-import android.content.ClipData;
-import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.view.inputmethod.InputMethodManager;
 import android.graphics.drawable.GradientDrawable;
-import android.os.Handler;
-import android.os.Looper;
 import android.util.AttributeSet;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -20,15 +16,15 @@ import android.widget.BaseAdapter;
 import android.widget.LinearLayout;
 import android.widget.ListPopupWindow;
 import android.widget.TextView;
-
 import android.widget.Toast;
 
+import com.newchar.debug.FloatViewService;
 import com.newchar.debug.api.PluginContext;
 import com.newchar.debug.api.PluginManager;
 import com.newchar.debug.api.ScreenDisplayPlugin;
 import com.newchar.debug.utils.MoveTouchListener;
 import com.newchar.debug.utils.UIUtils;
-import com.newchar.debug.utils.WifiStatusChecker;
+import com.newchar.debug.utils.PcConnectionChecker;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -57,17 +53,16 @@ public class DebugView extends LinearLayout {
     private TextView mSwitchModeView;
     private static final int VIEW_ID_SWITCH_MODE_VIEW = View.generateViewId();
 
-    // WiFi 连接状态 - 显示在顶部功能区
-    private TextView mWifiStatusView;
-    private static final int VIEW_ID_WIFI_STATUS = View.generateViewId();
-    private Handler mHandler = new Handler(Looper.getMainLooper());
-    private Runnable mWifiRefreshRunnable;
+    // PC reverse 通道状态 - 显示在顶部功能区
+    private TextView mPcStatusView;
+    private static final int VIEW_ID_PC_STATUS = View.generateViewId();
     private boolean mAttached;
+    private final PcConnectionChecker.Listener mPcStatusListener = connected -> updatePcStatus();
 
     public static final int BUTTON_PADDING_TOP_BOTTOM = 12;
     public static final int BUTTON_PADDING_LEFT_RIGHT = 10;
 
-    public static final String TEXT_COPY = "复制";
+    public static final String TEXT_COPY = "隐藏";
     public static final String TEXT_PAUSE = "停止";
     public static final String TEXT_FRESH = "刷新";
     public static final String TEXT_RESUME = "恢复";
@@ -117,15 +112,15 @@ public class DebugView extends LinearLayout {
         titleController.setGravity(Gravity.END);
         titleController.setOnTouchListener(new MoveTouchListener(this, mMoveHandler));
 
-        // WiFi 连接状态 - 显示在最左侧
-        initWifiStatusView(context);
+        // PC reverse 通道状态 - 显示在最左侧
+        initPcStatusView(context);
 
         initCopyView(context);
         initFoldView(context);
         initClearView(context);
         initSwitchModeView(context);
 
-        titleController.addView(mWifiStatusView);
+        titleController.addView(mPcStatusView);
         titleController.addView(mCopyView);
         titleController.addView(mFoldView);
         titleController.addView(mClearView);
@@ -156,35 +151,11 @@ public class DebugView extends LinearLayout {
         mCopyView = genTextView(context, VIEW_ID_COPY_VIEW);
         mCopyView.setText(TEXT_COPY);
         mCopyView.setOnClickListener(copyView -> {
-            if (mCurrentPlugin == null) {
-                return;
-            }
-            CharSequence text = mCurrentPlugin.onCopyText();
-            if (text == null || text.length() == 0) {
-                return;
-            }
-            ClipboardManager clipboard = (ClipboardManager) getContext()
-                    .getSystemService(Context.CLIPBOARD_SERVICE);
-            if (clipboard != null) {
-                clipboard.setPrimaryClip(ClipData.newPlainText("debug", text));
-                Toast.makeText(getContext(), "已复制", Toast.LENGTH_SHORT).show();
-            }
+            Intent intent = new Intent(getContext(), FloatViewService.class);
+            intent.setAction(FloatViewService.ACTION_HIDE_OVERLAY);
+            getContext().startService(intent);
         });
-        mCopyView.setOnLongClickListener(copyView -> {
-            if (mCurrentPlugin == null) {
-                return false;
-            }
-            Intent shareIntent = mCurrentPlugin.onCreateShareIntent();
-            if (shareIntent == null) {
-                return false;
-            }
-            try {
-                getContext().startActivity(Intent.createChooser(shareIntent, "分享"));
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-            return true;
-        });
+        mCopyView.setOnLongClickListener(copyView -> true);
     }
 
     private void initSwitchModeView(Context context) {
@@ -200,75 +171,55 @@ public class DebugView extends LinearLayout {
     }
 
     /**
-     * 初始化 WiFi 连接状态文本（在顶部功能区）。
-     * 显示短文本：已连网 / 已连 / 未连
+     * 初始化 PC reverse 通道状态文本（在顶部功能区）。
      */
-    private void initWifiStatusView(Context context) {
-        mWifiStatusView = genTextView(context, VIEW_ID_WIFI_STATUS);
-        mWifiStatusView.setTextSize(12);
-        mWifiStatusView.setPadding(
+    private void initPcStatusView(Context context) {
+        mPcStatusView = genTextView(context, VIEW_ID_PC_STATUS);
+        mPcStatusView.setTextSize(12);
+        mPcStatusView.setPadding(
                 dp2px(context, 10), dp2px(context, 6),
                 dp2px(context, 10), dp2px(context, 6));
-        // 默认未连接
-        updateWifiStatus(context);
+        updatePcStatus();
 
-        // 点击显示详情
-        mWifiStatusView.setOnClickListener(v -> {
-            String hint = WifiStatusChecker.buildWifiHint(context);
-            Toast.makeText(context, hint, Toast.LENGTH_LONG).show();
+        mPcStatusView.setOnClickListener(v -> {
+            boolean connected = PcConnectionChecker.get().isConnected();
+            Toast.makeText(context, connected
+                    ? "PC 已连接 (127.0.0.1:6666)" : "PC 未连接",
+                    Toast.LENGTH_SHORT).show();
         });
     }
 
     /**
-     * 更新顶部 WiFi 连接状态。
-     * 三个状态，固定长度短文本：
-     * - 已连网 (同网段)
-     * - 已连 (不同网段)
-     * - 未连 (未连接)
+     * 更新顶部 PC reverse 通道状态。
      */
-    private void updateWifiStatus(Context context) {
-        if (mWifiStatusView == null) {
+    private void updatePcStatus() {
+        if (mPcStatusView == null) {
             return;
         }
-        if (WifiStatusChecker.isSameWifiAsExpected(context)) {
-            // 同网段，绿色
-            mWifiStatusView.setText("已连网");
-            mWifiStatusView.setTextColor(Color.parseColor("#2E7D32"));
-        } else if (WifiStatusChecker.isWifiConnected(context)) {
-            // 已连 WiFi 但不同网段，黄色
-            mWifiStatusView.setText("已连");
-            mWifiStatusView.setTextColor(Color.parseColor("#E65100"));
+        if (PcConnectionChecker.get().isConnected()) {
+            mPcStatusView.setText("已连");
+            mPcStatusView.setTextColor(Color.parseColor("#2E7D32"));
         } else {
-            // 未连接
-            mWifiStatusView.setText("未连");
-            mWifiStatusView.setTextColor(Color.GRAY);
+            mPcStatusView.setText("未连");
+            mPcStatusView.setTextColor(Color.GRAY);
         }
     }
 
     /**
-     * 启动/停止 WiFi 状态定时刷新。
+     * 启动 PC reverse 通道状态监听。
      */
-    private void startWifiRefresh() {
-        if (mWifiRefreshRunnable == null) {
-            mWifiRefreshRunnable = new Runnable() {
-                @Override
-                public void run() {
-                    Context context = getContext();
-                    if (context != null && mAttached) {
-                        updateWifiStatus(context);
-                        mHandler.postDelayed(this, 5000);
-                    }
-                }
-            };
-        }
-        mHandler.post(mWifiRefreshRunnable);
+    private void startPcStatusChecker() {
+        PcConnectionChecker.get().addListener(mPcStatusListener);
+        PcConnectionChecker.get().start(getContext());
+        updatePcStatus();
     }
 
-    private void stopWifiRefresh() {
-        if (mWifiRefreshRunnable != null && mHandler != null) {
-            mHandler.removeCallbacks(mWifiRefreshRunnable);
-            mWifiRefreshRunnable = null;
-        }
+    /**
+     * 停止 PC reverse 通道状态监听。
+     */
+    private void stopPcStatusChecker() {
+        PcConnectionChecker.get().removeListener(mPcStatusListener);
+        PcConnectionChecker.get().stop();
     }
 
     private void cycleSizeMode() {
@@ -442,7 +393,7 @@ public class DebugView extends LinearLayout {
         }
         registerFocusChangeListener();
         loadPlugin();
-        startWifiRefresh();
+        startPcStatusChecker();
     }
 
     @Override
@@ -454,7 +405,7 @@ public class DebugView extends LinearLayout {
         DebugViewStore.detach(this);
         removeAllViews();
         unloadPlugin();
-        stopWifiRefresh();
+        stopPcStatusChecker();
     }
 
     public <T extends ScreenDisplayPlugin> T getPlugin(Class<T> clazz){
@@ -505,9 +456,15 @@ public class DebugView extends LinearLayout {
         if (plugin == null) {
             return;
         }
-        ScreenDisplayPlugin olcCurrentPlugin = mCurrentPlugin;
-        if (olcCurrentPlugin != null) {
-            olcCurrentPlugin.onHide();
+        // Hide ALL other plugins to prevent simultaneous display in the vertical LinearLayout.
+        for (ScreenDisplayPlugin p : mPagePlugin) {
+            if (p != plugin) {
+                try {
+                    p.onHide();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
         }
         plugin.onShow();
         bringToFront();

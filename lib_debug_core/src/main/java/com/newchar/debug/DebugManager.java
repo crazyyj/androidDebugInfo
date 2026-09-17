@@ -59,7 +59,7 @@ public class DebugManager {
         AppLifecycleManager.getInstance().addLifecycleCallback(mUiContextActivityCallback);
         AppLifecycleManager.getInstance().addAppCloseCallback(mPluginRegisterCallback);
         // 先挂载基础插件，避免依赖首次 Activity 回调。
-        registerOptionalPlugin("com.newchar.debug.logview.LogViewPlugin");
+        registerOptionalPlugin("com.newchar.debug.plugin.LogViewPlugin");
         mInitialized = true;
     }
 

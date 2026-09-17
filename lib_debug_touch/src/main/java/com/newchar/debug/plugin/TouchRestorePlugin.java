@@ -7,11 +7,15 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 
-import com.newchar.debug.touch.MotionManager;
 import com.newchar.debug.touch.ScreenRecordManager;
+import com.newchar.debug.touch.eventreplay.EventReplayManager;
 import com.newchar.debug.api.PluginContext;
 import com.newchar.debug.api.ScreenDisplayPlugin;
+
+import java.io.File;
+import java.io.IOException;
 
 /**
  * 触摸事件与屏幕录制调试插件。
@@ -22,14 +26,17 @@ public class TouchRestorePlugin extends ScreenDisplayPlugin {
     private static final int STATE_CLOSE = 0;
     private static final int STATE_OPEN = 1;
 
-    private final MotionManager mMotionManager = new MotionManager();
+    private final EventReplayManager mEventReplayManager = new EventReplayManager();
     private int mTouchState = STATE_CLOSE;
-    private LinearLayout mContainerView;
+    private File mLastInputScriptFile;
+    private ScrollView mContainerView;
     private Button mTouchRecordButton;
     private Button mScreenStartButton;
     private Button mStreamStartButton;
     private Button mScreenPauseButton;
     private Button mScreenStopButton;
+    private Button mCameraStartButton;
+    private Button mCameraStopButton;
     private boolean mScreenStartButtonLocked;
 
     /**
@@ -99,6 +106,8 @@ public class TouchRestorePlugin extends ScreenDisplayPlugin {
         mStreamStartButton = null;
         mScreenPauseButton = null;
         mScreenStopButton = null;
+        mCameraStartButton = null;
+        mCameraStopButton = null;
         mScreenStartButtonLocked = false;
     }
 
@@ -112,6 +121,15 @@ public class TouchRestorePlugin extends ScreenDisplayPlugin {
     }
 
     /**
+     * 返回最近一次触摸录制生成的 shell 输入脚本。
+     *
+     * @return 尚未生成时返回 null
+     */
+    public File getLastInputScriptFile() {
+        return mLastInputScriptFile;
+    }
+
+    /**
      * 初始化插件容器。
      *
      * @param context 上下文
@@ -120,44 +138,62 @@ public class TouchRestorePlugin extends ScreenDisplayPlugin {
         if (mContainerView != null) {
             return;
         }
-        mContainerView = new LinearLayout(context);
-        mContainerView.setGravity(Gravity.CENTER);
-        mContainerView.setOrientation(LinearLayout.VERTICAL);
+        mContainerView = new ScrollView(context);
+        mContainerView.setFillViewport(true);
+        LinearLayout content = new LinearLayout(context);
+        content.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        content.setOrientation(LinearLayout.VERTICAL);
+        mContainerView.addView(content, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         mContainerView.setBackgroundColor(0x33FFFFFF);
         mContainerView.setPadding(32, 32, 32, 32);
 
         mTouchRecordButton = new Button(context);
         mTouchRecordButton.setTextColor(Color.BLACK);
         mTouchRecordButton.setOnClickListener(view -> toggleTouchCollectState());
-        mContainerView.addView(mTouchRecordButton,
+        content.addView(mTouchRecordButton,
                 new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT));
 
         mScreenStartButton = new Button(context);
         mScreenStartButton.setTextColor(Color.BLACK);
         mScreenStartButton.setOnClickListener(view -> startScreenRecord());
-        mContainerView.addView(mScreenStartButton,
+        content.addView(mScreenStartButton,
                 new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT));
 
         mStreamStartButton = new Button(context);
         mStreamStartButton.setTextColor(Color.BLACK);
         mStreamStartButton.setOnClickListener(view -> startRealtimeStream());
-        mContainerView.addView(mStreamStartButton,
+        content.addView(mStreamStartButton,
                 new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT));
 
         mScreenPauseButton = new Button(context);
         mScreenPauseButton.setTextColor(Color.BLACK);
         mScreenPauseButton.setOnClickListener(view -> toggleScreenPauseState());
-        mContainerView.addView(mScreenPauseButton,
+        content.addView(mScreenPauseButton,
                 new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT));
 
         mScreenStopButton = new Button(context);
         mScreenStopButton.setTextColor(Color.BLACK);
         mScreenStopButton.setOnClickListener(view -> stopScreenRecord());
-        mContainerView.addView(mScreenStopButton,
+        content.addView(mScreenStopButton,
+                new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        mCameraStartButton = new Button(context);
+        mCameraStartButton.setTextColor(Color.BLACK);
+        mCameraStartButton.setOnClickListener(view -> startCameraPreview());
+        content.addView(mCameraStartButton,
+                new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        mCameraStopButton = new Button(context);
+        mCameraStopButton.setTextColor(Color.BLACK);
+        mCameraStopButton.setOnClickListener(view -> stopCameraPreview());
+        content.addView(mCameraStopButton,
                 new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT));
     }
@@ -214,20 +250,70 @@ public class TouchRestorePlugin extends ScreenDisplayPlugin {
         updateButtonState();
     }
 
+    /** 启动设备端相机预览推流（无需屏幕录制权限）。 */
+    private void startCameraPreview() {
+        if (mContainerView == null || ScreenRecordManager.isCameraStreaming()) {
+            return;
+        }
+        ScreenRecordManager.startCamera(mContainerView.getContext());
+        updateButtonState();
+    }
+
+    /** 停止设备端相机预览推流。 */
+    private void stopCameraPreview() {
+        if (mContainerView == null || !ScreenRecordManager.isCameraStreaming()) {
+            return;
+        }
+        ScreenRecordManager.stopCamera(mContainerView.getContext());
+        updateButtonState();
+    }
+
     /**
      * 打开触摸事件采集。
      */
     private void openTouchCollect() {
         mTouchState = STATE_OPEN;
-        mMotionManager.start();
+        mEventReplayManager.startRecording();
+        if (mContainerView != null) {
+            Context context = mContainerView.getContext();
+            mEventReplayManager.recorder().setScreenSize(
+                    context.getResources().getDisplayMetrics().widthPixels,
+                    context.getResources().getDisplayMetrics().heightPixels);
+        }
     }
 
     /**
      * 关闭触摸事件采集。
      */
     private void closeTouchCollect() {
+        if (mTouchState == STATE_CLOSE) {
+            return;
+        }
         mTouchState = STATE_CLOSE;
-        mMotionManager.stop();
+        mEventReplayManager.stopRecording();
+        saveInputScript();
+    }
+
+    /** 将本次采集写入外部缓存目录的 LQITS 脚本。 */
+    private void saveInputScript() {
+        if (mContainerView == null || mEventReplayManager.recorder().getSequence().eventCount() == 0) {
+            return;
+        }
+        File cacheDir = mContainerView.getContext().getExternalCacheDir();
+        if (cacheDir == null) {
+            return;
+        }
+        File directory = new File(cacheDir, ".v/scripts");
+        if (!directory.isDirectory() && !directory.mkdirs()) {
+            return;
+        }
+        File script = new File(directory, "touch_" + System.currentTimeMillis() + ".lqits");
+        try {
+            mEventReplayManager.saveInputScript(script);
+            mLastInputScriptFile = script;
+        } catch (IOException exception) {
+            exception.printStackTrace();
+        }
     }
 
     /**
@@ -261,6 +347,15 @@ public class TouchRestorePlugin extends ScreenDisplayPlugin {
         if (mScreenStopButton != null) {
             mScreenStopButton.setText("停止录制屏幕");
             mScreenStopButton.setTextColor(recording ? Color.BLACK : Color.GRAY);
+        }
+        boolean cameraStreaming = ScreenRecordManager.isCameraStreaming();
+        if (mCameraStartButton != null) {
+            mCameraStartButton.setText(cameraStreaming ? "相机预览已启动" : "启动相机预览");
+            mCameraStartButton.setTextColor(cameraStreaming ? Color.GRAY : Color.BLACK);
+        }
+        if (mCameraStopButton != null) {
+            mCameraStopButton.setText("停止相机预览");
+            mCameraStopButton.setTextColor(cameraStreaming ? Color.BLACK : Color.GRAY);
         }
     }
 }

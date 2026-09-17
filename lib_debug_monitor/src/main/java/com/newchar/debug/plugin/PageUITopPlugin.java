@@ -200,6 +200,7 @@ public class PageUITopPlugin extends ScreenDisplayPlugin {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         );
+        ViewUtils.setVisibility(mTaskTopView, View.GONE);
     }
 
 

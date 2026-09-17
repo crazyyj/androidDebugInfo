@@ -8,8 +8,8 @@ import android.os.IBinder;
 import android.provider.Settings;
 
 import com.newchar.debug.utils.DebugUtils;
+import com.newchar.debug.utils.DebugForegroundNotificationManager;
 
-import java.util.Random;
 
 /**
  * @author newChar
@@ -19,8 +19,11 @@ import java.util.Random;
  */
 public class FloatViewService extends Service {
 
+    public static final String ACTION_HIDE_OVERLAY = "com.newchar.debug.action.HIDE_OVERLAY";
+    public static final String ACTION_RESTORE_OVERLAY = "com.newchar.debug.action.RESTORE_OVERLAY";
     private static volatile boolean sOverlayShowing;
-    private int mForegroundId;
+    private static volatile boolean sOverlayHidden;
+    private boolean mForegroundStarted;
 
     /**
      * 暂时用静态描述
@@ -50,7 +53,7 @@ public class FloatViewService extends Service {
      * @return true 已展示
      */
     public static boolean isOverlayShowing() {
-        return sOverlayShowing;
+        return sOverlayShowing || sOverlayHidden;
     }
 
     /**
@@ -91,6 +94,15 @@ public class FloatViewService extends Service {
      */
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        String action = intent == null ? null : intent.getAction();
+        if (ACTION_HIDE_OVERLAY.equals(action)) {
+            hideOverlay();
+            return START_STICKY;
+        }
+        if (ACTION_RESTORE_OVERLAY.equals(action)) {
+            restoreOverlay();
+            return START_STICKY;
+        }
         tryStartForegroundService(intent);
         if (mCurrFlowState != null) {
             mCurrFlowState.showPlugin();
@@ -109,6 +121,14 @@ public class FloatViewService extends Service {
             mCurrFlowState = null;
         }
         sOverlayShowing = false;
+        sOverlayHidden = false;
+        DebugForegroundNotificationManager.setOverlayHidden(getApplicationContext(), false);
+        if (mForegroundStarted) {
+            detachForeground();
+            DebugForegroundNotificationManager.release(getApplicationContext(),
+                    DebugForegroundNotificationManager.OWNER_OVERLAY);
+            mForegroundStarted = false;
+        }
     }
 
     /**
@@ -120,10 +140,45 @@ public class FloatViewService extends Service {
         if (!DebugUtils.isNeedForeground(intent)) {
             return;
         }
-        if (mForegroundId == 0) {
-            mForegroundId = new Random().nextInt(1000) + 1;
+        startSharedForeground();
+    }
+
+    /** 隐藏悬浮窗并保留服务，在共享通知中提供恢复显示操作。 */
+    private void hideOverlay() {
+        if (mCurrFlowState != null && mCurrFlowState.getDebugView() != null) {
+            mCurrFlowState.getDebugView().setVisibility(android.view.View.GONE);
         }
-        startForeground(mForegroundId, DebugUtils.buildForegroundNotification(getApplicationContext()));
+        sOverlayShowing = false;
+        sOverlayHidden = true;
+        startSharedForeground();
+        DebugForegroundNotificationManager.setOverlayHidden(getApplicationContext(), true);
+    }
+
+    /** 从共享通知操作恢复悬浮窗显示。 */
+    private void restoreOverlay() {
+        if (mCurrFlowState != null) {
+            mCurrFlowState.showPlugin();
+            sOverlayShowing = true;
+        }
+        sOverlayHidden = false;
+        DebugForegroundNotificationManager.setOverlayHidden(getApplicationContext(), false);
+    }
+
+    /** 以共享通知 id 进入前台，避免与其他调试服务产生多个通知。 */
+    private void startSharedForeground() {
+        startForeground(DebugForegroundNotificationManager.getNotificationId(),
+                DebugForegroundNotificationManager.acquire(getApplicationContext(),
+                        DebugForegroundNotificationManager.OWNER_OVERLAY));
+        mForegroundStarted = true;
+    }
+
+    /** 解除服务的前台绑定但不主动移除共享通知。 */
+    private void detachForeground() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_DETACH);
+        } else {
+            stopForeground(false);
+        }
     }
 
     /**

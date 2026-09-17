@@ -41,6 +41,8 @@ public final class TouchEventRecorder extends DefaultActivityCallback {
         if (mStarted) return;
         mStarted = true;
         mCollect = true;
+        mSequence.events.clear();
+        mSequence.activityName = null;
         mSequence.createdAt = System.currentTimeMillis();
         registerLifecycleIfNeed();
         for (Activity a : AppLifecycleManager.getInstance().getAllActivity()) {
@@ -203,10 +205,17 @@ public final class TouchEventRecorder extends DefaultActivityCallback {
             e.pointerCount = pc;
             e.pointerIds = new int[pc];
             e.points = new ArrayList<>();
+            float rawOffsetX = me.getRawX() - me.getX();
+            float rawOffsetY = me.getRawY() - me.getY();
             for (int i = 0; i < pc; i++) {
                 int id = me.getPointerId(i);
                 e.pointerIds[i] = id;
-                e.points.add(new TouchPoint(me.getX(i), me.getY(i), me.getPressure(i), me.getSize(i), id));
+                TouchPoint point = new TouchPoint(
+                        me.getX(i), me.getY(i), me.getPressure(i), me.getSize(i), id);
+                point.rawX = me.getX(i) + rawOffsetX;
+                point.rawY = me.getY(i) + rawOffsetY;
+                point.hasRawCoordinates = true;
+                e.points.add(point);
             }
             Activity a = mActivityRef.get();
             if (a != null && mOwner.mSequence.activityName == null) {

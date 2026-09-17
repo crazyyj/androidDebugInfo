@@ -52,16 +52,16 @@ allprojects {
     }
 }
 
-// kotlin-stdlib 版本锁定仅对 app_debug_pc_tools 生效，Android 模块不引入 kotlin 额外内容
-subprojects { sub ->
-    if (sub.name == 'app_debug_pc_tools') {
+// kotlin-stdlib 版本对齐：Kotlin 1.8 起主 stdlib 已合并 jdk7/jdk8 类，
+// 若同一 classpath 上同时出现 1.8.22 主包与旧版 jdk7/jdk8 独立包会导致类重复。
+// force 仅对齐已存在的传递依赖版本，不会向 Android 模块额外引入 kotlin。
+subprojects {
         configurations.configureEach {
             resolutionStrategy {
                 force "org.jetbrains.kotlin:kotlin-stdlib:${rootProject.ext.kotlinStdlibVersion}"
                 force "org.jetbrains.kotlin:kotlin-stdlib-common:${rootProject.ext.kotlinStdlibVersion}"
                 force "org.jetbrains.kotlin:kotlin-stdlib-jdk7:${rootProject.ext.kotlinStdlibVersion}"
                 force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:${rootProject.ext.kotlinStdlibVersion}"
-            }
         }
     }
 }

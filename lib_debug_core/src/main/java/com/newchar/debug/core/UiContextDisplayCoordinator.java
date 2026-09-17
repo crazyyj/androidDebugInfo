@@ -1,6 +1,7 @@
 package com.newchar.debug.core;
 
 import android.annotation.SuppressLint;
+import android.Manifest;
 import android.app.Activity;
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -30,6 +31,7 @@ public final class UiContextDisplayCoordinator {
     private static final int ENTRY_NOTIFY_ID = 22001;
     private static volatile UiContextDisplayCoordinator sInstance;
     private boolean mHasRequestedPermission;
+    private boolean mHasRequestedNotificationPermission;
 
     private UiContextDisplayCoordinator() {
     }
@@ -56,7 +58,11 @@ public final class UiContextDisplayCoordinator {
      * @param activity 当前页面
      */
     public void onUiContextCreated(Activity activity) {
-        if (!isTargetActivity(activity) || isOverlayShowing()) {
+        if (!isTargetActivity(activity)) {
+            return;
+        }
+        requestNotificationPermissionIfNeed(activity);
+        if (isOverlayShowing()) {
             return;
         }
         if (canDrawOverlay(activity)) {
@@ -137,6 +143,22 @@ public final class UiContextDisplayCoordinator {
                 Uri.parse("package:" + activity.getPackageName())
         );
         activity.startActivity(intent);
+    }
+
+    /**
+     * Android 13 及以上申请通知权限，确保隐藏悬浮窗后的“恢复显示”操作能出现在通知栏。
+     *
+     * @param activity 当前调试页面
+     */
+    private void requestNotificationPermissionIfNeed(Activity activity) {
+        if (activity == null || mHasRequestedNotificationPermission
+                || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+                || activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        mHasRequestedNotificationPermission = true;
+        activity.requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 0xD01);
     }
 
     /**

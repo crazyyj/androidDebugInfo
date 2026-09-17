@@ -1,6 +1,7 @@
 package com.newchar.debug.utils;
 
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
@@ -9,6 +10,11 @@ import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.util.Log;
+
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.util.Enumeration;
 
 /**
  * @author newChar
@@ -19,8 +25,16 @@ public class WifiStatusChecker {
     private static final String TAG = "WifiStatusChecker";
     private static final String PROP_EXPECTED_WIFI_SSID = "debug.wifi.expected.ssid";
 
-    /** 当前连接的 WiFi SSID */
+    /**
+     * 当前连接的 WiFi SSID。
+     * <p>
+     * 获取 SSID 需要 ACCESS_WIFI_STATE 权限（Android 10+ 另需位置权限），
+     * 该库不强制声明此权限；无权限时静默返回空串，不抛异常、不打 error 日志。
+     */
     public static String getCurrentWifiSsid(Context context) {
+        if (!hasPermission(context, android.Manifest.permission.ACCESS_WIFI_STATE)) {
+            return "";
+        }
         try {
             WifiManager wifiManager = (WifiManager) context.getSystemService(Context.WIFI_SERVICE);
             if (wifiManager != null) {
@@ -37,28 +51,39 @@ public class WifiStatusChecker {
                 }
             }
         } catch (Exception e) {
-            Log.e(TAG, "getWifiSsid failed", e);
+            Log.w(TAG, "getWifiSsid failed", e);
         }
         return "";
     }
 
-    /** 当前连接的 WiFi IP 地址 */
+    /**
+     * 当前 WiFi/移动热点的本机 IPv4 地址。
+     * <p>
+     * 通过 {@link NetworkInterface} 枚举获取，不依赖 ACCESS_WIFI_STATE 权限。
+     */
     public static String getCurrentWifiIp(Context context) {
         try {
-            WifiManager wifiManager = (WifiManager) context.getSystemService(Context.WIFI_SERVICE);
-            if (wifiManager != null) {
-                WifiInfo wifiInfo = wifiManager.getConnectionInfo();
-                if (wifiInfo != null) {
-                    int ipAddress = wifiInfo.getIpAddress();
-                    if (ipAddress != 0) {
-                        return intToIpAddress(ipAddress);
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            if (interfaces == null) return "";
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface iface = interfaces.nextElement();
+                if (iface.isLoopback() || !iface.isUp()) continue;
+                Enumeration<InetAddress> addresses = iface.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress addr = addresses.nextElement();
+                    if (addr instanceof Inet4Address && !addr.isLoopbackAddress()) {
+                        return addr.getHostAddress();
                     }
                 }
             }
         } catch (Exception e) {
-            Log.e(TAG, "getWifiIp failed", e);
+            Log.w(TAG, "getWifiIp failed", e);
         }
         return "";
+    }
+
+    private static boolean hasPermission(Context context, String permission) {
+        return context.checkCallingOrSelfPermission(permission) == PackageManager.PERMISSION_GRANTED;
     }
 
     /** 当前是否连接了 WiFi 网络 */
@@ -136,7 +161,4 @@ public class WifiStatusChecker {
         return "WiFi 不同网段 ✗ (" + currentSsid + "，期望: " + expectedSsid + ")";
     }
 
-    private static String intToIpAddress(int ip) {
-        return (ip & 0xFF) + "." + ((ip >> 8) & 0xFF) + "." + ((ip >> 16) & 0xFF) + "." + ((ip >> 24) & 0xFF);
-    }
 }

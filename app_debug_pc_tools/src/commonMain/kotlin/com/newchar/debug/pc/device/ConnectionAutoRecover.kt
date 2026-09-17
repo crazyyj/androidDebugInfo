@@ -7,16 +7,16 @@ import com.newchar.debug.pc.device.scan.DeviceScanConfig
 import com.newchar.debug.pc.device.scan.DeviceScanManager
 import com.newchar.debug.pc.executor.CommandExecutor
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.Flow
 
 /**
- * USB 断线 → WiFi 自动重连管理器。
+ * USB 断线后的 WiFi ADB 自动接管管理器。
  *
- * 核心原则：USB 优先，WiFi 仅作为候补。
+ * 核心原则：仅在当前连接失效后尝试缓存端点；恢复的 USB 或 WiFi 只作为备用，
+ * 不主动断开正在生效的另一条连接。
  * - 监听设备移除事件（非手动断开、USB 设备）
  * - 等待 USB 断开等待时间后，检查 USB 是否恢复
  * - USB 未恢复 → 尝试 WiFi ADB 连接
- * - USB 恢复 → 自动断开 WiFi 连接，切回 USB
+ * - WiFi ADB 恢复后由设备状态归并层接管为当前链路
  * - 心跳超时 → 触发重连流程
  */
 class ConnectionAutoRecover(
@@ -30,9 +30,6 @@ class ConnectionAutoRecover(
 
     // 记录用户手动断开的设备，不自动重连
     private val manuallyDisconnected = mutableSetOf<String>()
-    // 记录当前通过 WiFi 保持连接的设备
-    private val wifiConnectedDevices = mutableMapOf<String, DeviceInfo>()
-
     private val refreshNow: suspend (DeviceRefreshSource) -> Unit = { source ->
         runCatching { scanManager.refreshNow(source) }
     }
@@ -112,12 +109,10 @@ class ConnectionAutoRecover(
             return
         }
         if (device.isNetworkDevice) {
-            wifiConnectedDevices.remove(deviceId)
             return
         }
 
         // USB 设备被移除 → 等待 USB 恢复
-        wifiConnectedDevices.remove(deviceId)
         scope.launch {
             try {
                 delay(config.usbDisconnectWaitMs)
@@ -140,15 +135,13 @@ class ConnectionAutoRecover(
         }
     }
 
+    /** TCP ADB 重启期间发布的保留设备重新出现时，补一次延迟连接以跨过 adbd 启动窗口。 */
     private fun handleDeviceAdded(event: DeviceChangeEvent) {
         val device = event.device
-        val deviceId = device.id
-
-        // USB 恢复 → 断开同设备的 WiFi 连接（USB 优先）
-        if (!device.isNetworkDevice && wifiConnectedDevices.containsKey(deviceId)) {
-            wifiConnectedDevices.remove(deviceId)
-            // 尝试断开 WiFi 连接
-            runCatching { executor.adbSync("disconnect", "$deviceId") }
+        if (!device.isRetainedOffline || !device.canTryWirelessConnect) return
+        scope.launch {
+            delay(RESTART_RECONNECT_DELAY_MS)
+            attemptWifiReconnect(device, device.wirelessEndpoint)
         }
     }
 
@@ -180,7 +173,6 @@ class ConnectionAutoRecover(
         val output = result.output.ifBlank { result.error }
         if (result.isSuccess || output.contains("connected to", ignoreCase = true) ||
             output.contains("already connected to", ignoreCase = true)) {
-            wifiConnectedDevices[device.id] = device.copy(lastWifiConnectedAt = now)
             refreshNow(DeviceRefreshSource.LAN_SCAN)
         }
     }
@@ -188,5 +180,9 @@ class ConnectionAutoRecover(
     private suspend fun reconnectViaWifi(device: DeviceInfo) {
         val endpoint = device.wirelessEndpoint.takeIf { it.isNotBlank() } ?: return
         attemptWifiReconnect(device, endpoint)
+    }
+
+    private companion object {
+        const val RESTART_RECONNECT_DELAY_MS = 1_000L
     }
 }

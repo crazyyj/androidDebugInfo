@@ -2,9 +2,6 @@ package com.newchar.debug.net;
 
 import android.annotation.SuppressLint;
 import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
-import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -17,6 +14,7 @@ import android.provider.Settings;
 import android.net.Uri;
 
 import com.newchar.debug.utils.HandleWrapper;
+import com.newchar.debug.utils.DebugForegroundNotificationManager;
 
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -42,8 +40,6 @@ public class DebugNetVpnService extends VpnService {
     public static final String ACTION_STOP = "com.newchar.debug.net.action.STOP";
 
     private static final String TAG = "DebugNetVpn";
-    private static final String CHANNEL_ID = "debug_net_vpn";
-    private static final int NOTIFICATION_ID = 0xD017;
     private static final int VPN_MTU = 1500;
     private static final int BUFFER_SIZE = 32767;
 
@@ -215,55 +211,28 @@ public class DebugNetVpnService extends VpnService {
 
     @SuppressLint("NewApi")
     private void startForegroundCompat() {
-        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        if (nm == null) {
-            return;
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = nm.getNotificationChannel(CHANNEL_ID);
-            if (channel == null) {
-                channel = new NotificationChannel(CHANNEL_ID, "DebugNet VPN",
-                        NotificationManager.IMPORTANCE_LOW);
-                channel.setDescription("网络抓包进行中");
-                nm.createNotificationChannel(channel);
-            }
-        }
-        Intent launch = getPackageManager().getLaunchIntentForPackage(getPackageName());
-        int pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            pendingFlags |= PendingIntent.FLAG_IMMUTABLE;
-        }
-        PendingIntent contentIntent = launch == null ? null
-                : PendingIntent.getActivity(this, 0, launch, pendingFlags);
-        Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-                ? new Notification.Builder(this, CHANNEL_ID)
-                : new Notification.Builder(this);
-        builder.setSmallIcon(android.R.drawable.stat_sys_download)
-                .setContentTitle("DebugNet VPN")
-                .setContentText("网络抓包进行中")
-                .setOngoing(true);
-        if (contentIntent != null) {
-            builder.setContentIntent(contentIntent);
-        }
-        Notification notification = builder.build();
+        Notification notification = DebugForegroundNotificationManager.acquire(
+                getApplicationContext(), DebugForegroundNotificationManager.OWNER_VPN);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(NOTIFICATION_ID, notification,
+            startForeground(DebugForegroundNotificationManager.getNotificationId(), notification,
                     android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, notification,
+            startForeground(DebugForegroundNotificationManager.getNotificationId(), notification,
                     android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
         } else {
-            startForeground(NOTIFICATION_ID, notification);
+            startForeground(DebugForegroundNotificationManager.getNotificationId(), notification);
         }
     }
 
     private void stopForegroundCompat() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                stopForeground(STOP_FOREGROUND_REMOVE);
+                stopForeground(STOP_FOREGROUND_DETACH);
             } else {
-                stopForeground(true);
+                stopForeground(false);
             }
+            DebugForegroundNotificationManager.release(getApplicationContext(),
+                    DebugForegroundNotificationManager.OWNER_VPN);
         } catch (Throwable ignored) {
         }
     }

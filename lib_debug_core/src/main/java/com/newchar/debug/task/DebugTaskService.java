@@ -1,9 +1,6 @@
 package com.newchar.debug.task;
 
 import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
-import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
@@ -11,7 +8,7 @@ import android.os.Build;
 import android.os.IBinder;
 import android.util.Log;
 
-import com.newchar.debug.utils.DebugUtils;
+import com.newchar.debug.utils.DebugForegroundNotificationManager;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -30,9 +27,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class DebugTaskService extends Service {
 
     private static final String TAG = "DebugTaskService";
-    private static final String CHANNEL_ID = "debug_task_service";
-    private static final int NOTIFICATION_ID = 0x5A57;
-
     private static final AtomicInteger sActiveTasks = new AtomicInteger(0);
 
     /** 服务线程池：所有任务共用一个池，串行/并发由任务自身决定 */
@@ -123,12 +117,13 @@ public class DebugTaskService extends Service {
 
     private void startForegroundCompat() {
         try {
-            Notification notification = DebugUtils.buildForegroundNotification(getApplicationContext());
+            Notification notification = DebugForegroundNotificationManager.acquire(
+                    getApplicationContext(), DebugForegroundNotificationManager.OWNER_TASK);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(NOTIFICATION_ID, notification,
+                startForeground(DebugForegroundNotificationManager.getNotificationId(), notification,
                         android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
             } else {
-                startForeground(NOTIFICATION_ID, notification);
+                startForeground(DebugForegroundNotificationManager.getNotificationId(), notification);
             }
         } catch (Throwable t) {
             Log.e(TAG, "startForeground failed", t);
@@ -138,10 +133,12 @@ public class DebugTaskService extends Service {
     private void stopForegroundCompat() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                stopForeground(STOP_FOREGROUND_REMOVE);
+                stopForeground(STOP_FOREGROUND_DETACH);
             } else {
-                stopForeground(true);
+                stopForeground(false);
             }
+            DebugForegroundNotificationManager.release(getApplicationContext(),
+                    DebugForegroundNotificationManager.OWNER_TASK);
         } catch (Throwable ignored) {
         }
     }

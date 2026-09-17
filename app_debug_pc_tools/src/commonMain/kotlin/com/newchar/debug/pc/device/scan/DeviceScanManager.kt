@@ -3,6 +3,7 @@ package com.newchar.debug.pc.device.scan
 import com.newchar.debug.pc.device.AdbDeviceParser
 import com.newchar.debug.pc.device.CommandResult
 import com.newchar.debug.pc.device.DeviceInfo
+import com.newchar.debug.pc.device.STATUS_OFFLINE
 import com.newchar.debug.pc.executor.CommandExecutor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +43,7 @@ class DeviceScanManager(
     private var pollingJob: Job? = null
     private var mdnsJob: Job? = null
     private var lanJob: Job? = null
+    private var metadataJob: Job? = null
 
     private val _state = MutableStateFlow(DeviceScanState())
     val state: StateFlow<DeviceScanState> = _state.asStateFlow()
@@ -86,17 +88,90 @@ class DeviceScanManager(
                 return
             }
             val parsedDevices = AdbDeviceParser.parseDeviceList(result.output)
-            val activeDevices = deviceMetadataResolver?.enrich(executor, parsedDevices) ?: parsedDevices
-            val devices = mergeRetainedWirelessDevices(previousState.devices, activeDevices)
-            val changeEvents = buildChangeEvents(previousState.devices, devices, source)
-            changeEvents.forEach { _changeEvents.tryEmit(it) }
-            _state.value = previousState.copy(
-                devices = devices,
-                lastError = null,
-                lastRefreshSource = source,
-                recentChanges = (changeEvents + previousState.recentChanges).take(config.maxRecentChanges),
-            )
+            updateDeviceState(previousState, parsedDevices, source)
+            enrichDevicesInBackground(parsedDevices, source)
         }
+    }
+
+    /** 立即刷新 mDNS 服务并尝试连接新发现的无线 ADB 端点。 */
+    suspend fun refreshMdnsNow() {
+        discoverMdnsAndConnect()
+    }
+
+    /** 立即扫描局域网，并尝试连接扫描到或已保存的无线 ADB 端点。 */
+    suspend fun refreshLanNow() {
+        discoverLanAndConnect()
+    }
+
+    /** 后台补全型号与网络信息；附加查询异常或阻塞时不影响后续设备枚举。 */
+    private fun enrichDevicesInBackground(
+        parsedDevices: List<DeviceInfo>,
+        source: DeviceRefreshSource,
+    ) {
+        val resolver = deviceMetadataResolver ?: return
+        if (metadataJob?.isActive == true) return
+        metadataJob = scope.launch(Dispatchers.Default) {
+            val enrichedDevices = runCatching { resolver.enrich(executor, parsedDevices) }.getOrNull() ?: return@launch
+            refreshMutex.withLock {
+                val currentState = _state.value
+                if (hasSameConnectedDevices(currentState.devices, parsedDevices)) {
+                    updateDeviceState(currentState, enrichedDevices, source, emitChangeEvents = false)
+                } else {
+                    publishPreparedWirelessFallback(currentState, enrichedDevices, source)
+                }
+            }
+        }
+    }
+
+    /** 防止较早一次补全任务，把已经断开的设备重新写回列表。 */
+    private fun hasSameConnectedDevices(current: List<DeviceInfo>, expected: List<DeviceInfo>): Boolean {
+        val currentIds = current.filterNot(DeviceInfo::isRetainedOffline).map { it.id to it.status }.toSet()
+        val expectedIds = expected.map { it.id to it.status }.toSet()
+        return currentIds == expectedIds
+    }
+
+    /**
+     * TCP ADB 切换会重启 adbd 并短暂移除 USB transport；此时保留已补全的无线 endpoint，
+     * 让后续 Wi-Fi ADB 重连仍有候选链路，且不把已失效 USB 重新标记为在线。
+     */
+    private fun publishPreparedWirelessFallback(
+        currentState: DeviceScanState,
+        enrichedDevices: List<DeviceInfo>,
+        source: DeviceRefreshSource,
+    ) {
+        val activeIds = currentState.devices.filterNot(DeviceInfo::isRetainedOffline).mapTo(mutableSetOf()) { it.id }
+        val fallbacks = enrichedDevices.filter { it.id !in activeIds && !it.isNetworkDevice && it.wirelessEndpoint.isNotBlank() }
+            .map { it.withConnection(newStatus = STATUS_OFFLINE, newRetainedOffline = true) }
+        if (fallbacks.isEmpty()) return
+        val devices = (currentState.devices + fallbacks).distinctBy(DeviceInfo::id)
+        val events = buildChangeEvents(currentState.devices, devices, source)
+        events.forEach(_changeEvents::tryEmit)
+        _state.value = currentState.copy(devices = devices, recentChanges = (events + currentState.recentChanges).take(config.maxRecentChanges))
+    }
+
+    /** 先发布 adb 原始枚举结果，再用补全信息刷新，避免附加查询阻塞设备列表。 */
+    private fun updateDeviceState(
+        previousState: DeviceScanState,
+        activeDevices: List<DeviceInfo>,
+        source: DeviceRefreshSource,
+        emitChangeEvents: Boolean = true,
+    ) {
+        val devices = mergeRetainedWirelessDevices(previousState.devices, activeDevices)
+        val changeEvents = if (emitChangeEvents) {
+            buildChangeEvents(previousState.devices, devices, source)
+        } else {
+            emptyList()
+        }
+        changeEvents.forEach { event ->
+            println("[DeviceScan] ${event.summary}")
+            _changeEvents.tryEmit(event)
+        }
+        _state.value = previousState.copy(
+            devices = devices,
+            lastError = null,
+            lastRefreshSource = source,
+            recentChanges = (changeEvents + previousState.recentChanges).take(config.maxRecentChanges),
+        )
     }
 
     private suspend fun runTrackDevicesLoop() {
@@ -251,39 +326,42 @@ class DeviceScanManager(
         newMap.forEach { (id, device) ->
             val old = oldMap[id]
             when {
-                old == null -> events += DeviceChangeEvent(DeviceChangeType.ADDED, source, device, "device added")
-                old != device -> events += DeviceChangeEvent(DeviceChangeType.CHANGED, source, device, "device changed")
+                old == null -> events += DeviceChangeEvent(
+                    DeviceChangeType.ADDED,
+                    source,
+                    device,
+                    "设备 $id 已连接（${device.connectionStatusLabel()}）",
+                )
+                else -> buildDeviceChangeSummary(old, device)?.let { summary ->
+                    events += DeviceChangeEvent(DeviceChangeType.CHANGED, source, device, summary)
+                }
             }
         }
 
         oldMap.forEach { (id, device) ->
             if (id !in newMap) {
-                events += DeviceChangeEvent(DeviceChangeType.REMOVED, source, device, "device removed")
+                events += DeviceChangeEvent(
+                    DeviceChangeType.REMOVED,
+                    source,
+                    device,
+                    "设备 $id 已断开（${device.connectionStatusLabel()}）",
+                )
             }
         }
         return events.sortedByDescending { it.timestampMs }
     }
 
-    private fun mergeRetainedWirelessDevices(
-        previousDevices: List<DeviceInfo>,
-        activeDevices: List<DeviceInfo>,
-    ): List<DeviceInfo> {
-        val activeIds = activeDevices.mapTo(linkedSetOf()) { it.id }
-        val activeNetworkEndpoints = activeDevices
-            .filter(DeviceInfo::isNetworkDevice)
-            .mapTo(linkedSetOf()) { it.id }
-        val retainedDevices = previousDevices.mapNotNull { previous ->
-            when {
-                previous.id in activeIds -> null
-                previous.isNetworkDevice -> null
-                !previous.canTryWirelessConnect -> null
-                previous.wirelessEndpoint in activeNetworkEndpoints -> null
-                else -> previous.copy(status = "offline", isRetainedOffline = true)
+    /** 仅比较会影响连接状态的字段，忽略型号、SSID 等异步补全字段，避免产生伪变化事件。 */
+    private fun buildDeviceChangeSummary(old: DeviceInfo, new: DeviceInfo): String? {
+        val changes = buildList {
+            if (old.connectionStatusLabel() != new.connectionStatusLabel()) {
+                add("连接：${old.connectionStatusLabel()} → ${new.connectionStatusLabel()}")
+            }
+            if (old.isRetainedOffline != new.isRetainedOffline) {
+                add(if (new.isRetainedOffline) "USB 已断开，等待无线重连" else "已恢复在线")
             }
         }
-        return (activeDevices + retainedDevices)
-            .distinctBy(DeviceInfo::id)
-            .sortedWith(compareBy<DeviceInfo> { it.isRetainedOffline }.thenBy { it.model.ifBlank { it.id } })
+        return changes.takeIf(List<String>::isNotEmpty)?.joinToString("；", prefix = "设备 ${new.id} ")
     }
 
     private suspend fun connectKnownWirelessEndpoints(state: DeviceScanState): LanDiscoveryResult {
@@ -335,7 +413,55 @@ class DeviceScanManager(
         }
         _state.value = _state.value.copy(lastError = error, lastRefreshSource = source)
     }
+
 }
+
+/**
+ * 合并本轮 ADB 枚举与上一轮 USB 设备缓存，使 USB 拔线后的 Wi-Fi ADB 重连仍属于同一物理设备。
+ *
+ * USB 当前在线时 [DeviceInfo.canTryWirelessConnect] 必然为 false，不能以它决定是否保留端点；
+ * 是否保留只取决于已缓存端点和用户是否手动断开。
+ */
+internal fun mergeRetainedWirelessDevices(
+    previousDevices: List<DeviceInfo>,
+    activeDevices: List<DeviceInfo>,
+): List<DeviceInfo> {
+    val activeIds = activeDevices.mapTo(linkedSetOf()) { it.id }
+    val activeNetworkEndpoints = activeDevices.filter(DeviceInfo::isNetworkDevice).mapTo(linkedSetOf()) { it.id }
+    val cachedByEndpoint = previousDevices
+        .filterNot(DeviceInfo::isNetworkDevice)
+        .filterNot(DeviceInfo::isManuallyDisconnected)
+        .filter { it.wirelessEndpoint.isNotBlank() }
+        .associateBy(DeviceInfo::wirelessEndpoint)
+    val activeWithIdentity = activeDevices.map { active ->
+        cachedByEndpoint[active.id]?.let(active::restoreCachedUsbIdentity) ?: active
+    }
+    val retainedDevices = previousDevices.mapNotNull { previous ->
+        if (previous.id in activeIds || previous.isNetworkDevice || previous.isManuallyDisconnected ||
+            previous.wirelessEndpoint.isBlank() || previous.wirelessEndpoint in activeNetworkEndpoints
+        ) null else previous.withConnection(newStatus = STATUS_OFFLINE, newRetainedOffline = true)
+    }
+    return (activeWithIdentity + retainedDevices)
+        .distinctBy(DeviceInfo::id)
+        .sortedWith(compareBy<DeviceInfo> { it.isRetainedOffline }.thenBy { it.model.ifBlank { it.id } })
+}
+
+/** 为新发现的 Wi-Fi ADB 记录恢复 USB 阶段已读取的稳定设备身份与展示信息。 */
+private fun DeviceInfo.restoreCachedUsbIdentity(cached: DeviceInfo): DeviceInfo = copy(
+    usbSerial = usbSerial.ifBlank { cached.usbSerial },
+    usbInfo = usbInfo.ifBlank { cached.usbInfo },
+    product = product.ifBlank { cached.product },
+    model = model.ifBlank { cached.model },
+    device = device.ifBlank { cached.device },
+    manufacturer = manufacturer.ifBlank { cached.manufacturer },
+    characteristics = characteristics.ifBlank { cached.characteristics },
+    deviceCategory = deviceCategory.ifBlank { cached.deviceCategory },
+    physicalDeviceId = physicalDeviceId.ifBlank { cached.physicalDeviceId },
+    wirelessIp = wirelessIp.ifBlank { cached.wirelessIp },
+    wirelessPort = wirelessPort.takeIf { it > 0 } ?: cached.wirelessPort,
+    wirelessEndpoint = wirelessEndpoint.ifBlank { cached.wirelessEndpoint },
+    wifiSsid = wifiSsid.ifBlank { cached.wifiSsid },
+)
 
 data class DeviceScanConfig(
     val pollIntervalMs: Long = 5_000L,

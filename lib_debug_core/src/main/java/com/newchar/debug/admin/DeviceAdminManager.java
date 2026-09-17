@@ -36,13 +36,13 @@ public final class DeviceAdminManager {
 
     /**
      * 获取 DebugDeviceAdminReceiver 的 ComponentName。
+     * ComponentName 需要应用包名（applicationId）而非 Java 包名。
      *
+     * @param context 上下文
      * @return ComponentName
      */
-    public ComponentName getAdminComponent() {
-        return new ComponentName(
-                DebugDeviceAdminReceiver.class.getPackage().getName(),
-                DebugDeviceAdminReceiver.class.getName());
+    public ComponentName getAdminComponent(Context context) {
+        return new ComponentName(context.getPackageName(), DebugDeviceAdminReceiver.class.getName());
     }
 
     /**
@@ -56,7 +56,7 @@ public final class DeviceAdminManager {
             return false;
         }
         DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
-        return dpm != null && dpm.isAdminActive(getAdminComponent());
+        return dpm != null && dpm.isAdminActive(getAdminComponent(context));
     }
 
     /**
@@ -88,11 +88,11 @@ public final class DeviceAdminManager {
             }
             return;
         }
-        ComponentName admin = getAdminComponent();
+        ComponentName admin = getAdminComponent(context);
         Bundle extras = new Bundle();
         extras.putParcelable(DevicePolicyManager.EXTRA_DEVICE_ADMIN, admin);
         // 说明文案
-        extras.putString(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "授予设备管理员权限以启用严格模式监控");
+        extras.putString(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "授予设备管理员权限以使用设备管理功能");
 
         int taskId = sNextTaskId++;
         ResultProxyRouter.launchForResult(
@@ -127,7 +127,7 @@ public final class DeviceAdminManager {
         if (dpm == null) {
             return false;
         }
-        dpm.removeActiveAdmin(getAdminComponent());
+        dpm.removeActiveAdmin(getAdminComponent(context));
         Log.i(TAG, "cancel admin requested");
         return true;
     }

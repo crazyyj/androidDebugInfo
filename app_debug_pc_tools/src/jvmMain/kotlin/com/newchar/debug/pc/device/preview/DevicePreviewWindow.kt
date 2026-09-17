@@ -14,6 +14,7 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,7 +38,15 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.rememberWindowState
 import com.newchar.debug.pc.config.DesktopAppSettingsStore
+import com.newchar.debug.pc.device.CameraServiceManager
 import com.newchar.debug.pc.device.DeviceInfo
+import com.newchar.debug.pc.device.stream.StreamKind
+import com.newchar.debug.pc.device.stream.StreamSessionCoordinator
+import com.newchar.debug.pc.device.stream.StreamSessionConfig
+import com.newchar.debug.pc.device.stream.StreamSessionKey
+import com.newchar.debug.pc.device.stream.StreamTransportEvent
+import com.newchar.debug.pc.device.stream.StreamTransportState
+import com.newchar.debug.pc.device.scan.JvmWifiDetector
 import com.newchar.debug.pc.executor.AdbCommandExecutor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -54,6 +63,7 @@ import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import javax.imageio.ImageIO
 import java.util.concurrent.atomic.AtomicReference
+import java.util.UUID
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -300,60 +310,70 @@ fun DevicePreviewWindow(
     onAlwaysOnTopChanged: (Boolean) -> Unit = {},
     onCloseRequest: () -> Unit,
 ) {
+    val adbTarget = device.adbTarget()
+    // 预览窗口打开时固定物理设备所有者键；ADB target 变化只代表链路切换，
+    // 不能销毁仍在等待局域网直连接管的 AppStreamServer。
+    val previewOwnerKey = remember { device.physicalDeviceKey() }
     val initialDisplay = DeviceDisplayInfo(1080, 1920, 0)
-    var displayInfo by remember(device.id) { mutableStateOf(initialDisplay) }
-    var frame by remember(device.id) { mutableStateOf<ImageBitmap?>(null) }
-    var errorText by remember(device.id) { mutableStateOf<String?>(null) }
-    var viewportSize by remember(device.id) { mutableStateOf(IntSize.Zero) }
-    var frameSource by remember(device.id) { mutableStateOf<PreviewFrameSource?>(null) }
-    var isInteracting by remember(device.id) { mutableStateOf(false) }
-    var pngRefreshVersion by remember(device.id) { mutableStateOf(0) }
-    var now by remember(device.id) { mutableStateOf(System.currentTimeMillis()) }
-    var rawMetrics by remember(device.id) { mutableStateOf<RawStreamMetrics?>(null) }
-    val capture = remember(device.id, executor) { AdbScreenCapture(executor, device.id) }
-    val rawFrameStream = remember(device.id, executor) { AdbRawFrameStream(executor, device.id) }
-    val adbH264Stream = remember(device.id, executor) { AdbScreenRecordStream(executor, device.id) }
-    val appStreamServer = remember(device.id) { AppStreamServer() }
-    val injector = remember(device.id, executor) {
-        AdbInputInjector(executor, device.id) { error -> errorText = error }
+    var displayInfo by remember(adbTarget) { mutableStateOf(initialDisplay) }
+    var frame by remember(adbTarget) { mutableStateOf<ImageBitmap?>(null) }
+    var errorText by remember(adbTarget) { mutableStateOf<String?>(null) }
+    var viewportSize by remember(adbTarget) { mutableStateOf(IntSize.Zero) }
+    var frameSource by remember(adbTarget) { mutableStateOf<PreviewFrameSource?>(null) }
+    var isInteracting by remember(adbTarget) { mutableStateOf(false) }
+    var pngRefreshVersion by remember(adbTarget) { mutableStateOf(0) }
+    var now by remember(adbTarget) { mutableStateOf(System.currentTimeMillis()) }
+    var rawMetrics by remember(adbTarget) { mutableStateOf<RawStreamMetrics?>(null) }
+    val capture = remember(adbTarget, executor) { AdbScreenCapture(executor, adbTarget) }
+    val rawFrameStream = remember(adbTarget, executor) { AdbRawFrameStream(executor, adbTarget) }
+    val adbH264Stream = remember(adbTarget, executor) { AdbScreenRecordStream(executor, adbTarget) }
+    val appStreamServer = remember(previewOwnerKey) { AppStreamServer() }
+    val streamCoordinator = remember(previewOwnerKey) { StreamSessionCoordinator() }
+    val appStreamKey = remember(previewOwnerKey) { StreamSessionKey(previewOwnerKey, StreamKind.SCREEN) }
+    val appTransportState by streamCoordinator.stateOf(appStreamKey).collectAsState()
+    val streamServiceManager = remember(executor) { CameraServiceManager(executor) }
+    val injector = remember(adbTarget, executor) {
+        AdbInputInjector(executor, adbTarget) { error -> errorText = error }
     }
-    val touchFilter = remember(device.id) { TouchFilter() }
+    val touchFilter = remember(adbTarget) { TouchFilter() }
     val settingsStore = remember { DesktopAppSettingsStore() }
     val scope = rememberCoroutineScope()
     val savedSettings = remember { settingsStore.loadSync() }
-    var alwaysOnTop by remember(device.id) { mutableStateOf(savedSettings.previewAlwaysOnTop) }
+    var alwaysOnTop by remember(adbTarget) { mutableStateOf(savedSettings.previewAlwaysOnTop) }
     val windowState = rememberWindowState(width = 420.dp, height = 760.dp)
 
-    DisposableEffect(capture, rawFrameStream, adbH264Stream, appStreamServer, injector, touchFilter) {
+    DisposableEffect(capture, rawFrameStream, adbH264Stream, injector, touchFilter) {
         onDispose {
             touchFilter.reset()
             injector.close()
             capture.close()
             rawFrameStream.close()
             adbH264Stream.close()
-            appStreamServer.close()
         }
+    }
+    DisposableEffect(appStreamServer) {
+        onDispose { appStreamServer.close() }
     }
     LaunchedEffect(alwaysOnTop) {
         settingsStore.save(savedSettings.copy(previewAlwaysOnTop = alwaysOnTop))
         onAlwaysOnTopChanged(alwaysOnTop)
     }
-    LaunchedEffect(device.id) {
+    LaunchedEffect(adbTarget) {
         while (isActive) {
             now = System.currentTimeMillis()
             delay(1_000L)
         }
     }
-    LaunchedEffect(device.id, executor) {
+    LaunchedEffect(adbTarget, executor) {
         while (isActive) {
-            runCatching { queryDisplayInfo(executor, device.id, displayInfo) }
+            runCatching { queryDisplayInfo(executor, adbTarget, displayInfo) }
                 .onSuccess { displayInfo = it }
                 .onFailure { errorText = "无法读取设备屏幕参数: ${it.message}" }
             delay(DISPLAY_POLL_INTERVAL_MS)
         }
     }
-    LaunchedEffect(device.id, executor, probeCache) {
-        val result = probeCache.probeIfNeeded(executor, device.id)
+    LaunchedEffect(adbTarget, executor, probeCache) {
+        val result = probeCache.probeIfNeeded(executor, adbTarget)
         frameSource = if (result.rawFramesSupported) PreviewFrameSource.RAW_YUV else PreviewFrameSource.ADB_H264
     }
     LaunchedEffect(frameSource, isInteracting, pngRefreshVersion, capture) {
@@ -420,28 +440,67 @@ fun DevicePreviewWindow(
     }
     LaunchedEffect(frameSource, appStreamServer) {
         if (frameSource != PreviewFrameSource.APP_H264) return@LaunchedEffect
-        val reverse = executor.adb("-s", device.id, "reverse", "tcp:$APP_STREAM_PORT", "tcp:$APP_STREAM_PORT")
-        if (!reverse.isSuccess) {
-            errorText = "无法建立 App 推流端口: ${reverse.error.ifBlank { reverse.output }}"
+        val token = createStreamToken()
+        val streamPort = runCatching {
+            appStreamServer.start(ExpectedStreamHello(StreamKind.SCREEN, token))
+        }.getOrElse {
+            errorText = "无法启动 App 推流监听：${it.message ?: "端口不可用"}"
             return@LaunchedEffect
         }
+        val directHost = JvmWifiDetector.wifiIp.orEmpty()
+        val reversePort = streamServiceManager.setupReversePort(adbTarget, streamPort, streamPort)
+        if (reversePort == null) {
+            errorText = "无法建立 App 推流端口，请确认 ADB 可用"
+            return@LaunchedEffect
+        }
+        val sessionId = UUID.randomUUID().toString()
+        val config = StreamSessionConfig(
+            sessionId = sessionId,
+            kind = StreamKind.SCREEN,
+            directHost = directHost.ifBlank { "127.0.0.1" },
+            directPort = streamPort,
+            reversePort = reversePort,
+            token = token,
+            allowDirectFallback = directHost.isNotBlank(),
+        )
+        val packageName = savedSettings.cameraAppPackage.ifBlank { "com.newchar.debug.sample" }
+        val configured = streamServiceManager.configureStreamTransport(adbTarget, packageName, config)
+        if (!configured.success && directHost.isNotBlank()) {
+            errorText = "无法下发 App 断线续流配置：${configured.reason}"
+            streamCoordinator.dispatch(appStreamKey, StreamTransportEvent.Failed(sessionId, errorText.orEmpty()))
+            return@LaunchedEffect
+        }
+        streamCoordinator.dispatch(appStreamKey, StreamTransportEvent.Started(sessionId))
         try {
-            appStreamServer.collectFrames { decodedFrame ->
-                frame = decodedFrame
-                errorText = null
-            }
+            appStreamServer.collectFrames(
+                onFrame = { decodedFrame ->
+                    frame = decodedFrame
+                    errorText = null
+                },
+                onTransportChanged = { transport ->
+                    streamCoordinator.dispatch(appStreamKey, StreamTransportEvent.FirstFrame(sessionId, transport, directHost))
+                },
+                onFrameReceived = {
+                    streamCoordinator.dispatch(appStreamKey, StreamTransportEvent.FrameReceived(sessionId))
+                },
+                onDisconnected = { transport ->
+                    streamCoordinator.dispatch(appStreamKey, StreamTransportEvent.SocketLost(sessionId, transport))
+                },
+            )
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (throwable: Throwable) {
             errorText = "App H264 流未连接，请在设备端开启实时推流"
+            streamCoordinator.dispatch(appStreamKey, StreamTransportEvent.Failed(sessionId, errorText.orEmpty()))
         } finally {
             appStreamServer.close()
+            streamCoordinator.dispatch(appStreamKey, StreamTransportEvent.Stopped)
         }
     }
 
     Window(
         onCloseRequest = onCloseRequest,
-        title = "预览 - ${device.model.ifBlank { device.id }}",
+        title = "预览 - ${device.displayName()}",
         state = windowState,
         alwaysOnTop = alwaysOnTop,
     ) {
@@ -480,7 +539,7 @@ fun DevicePreviewWindow(
                     }
                 }
                 BasicText(
-                    previewStatusText(frameSource, isInteracting, rawMetrics),
+                    previewStatusText(frameSource, isInteracting, rawMetrics, appTransportState),
                     modifier = Modifier.padding(top = 6.dp),
                     style = TextStyle(color = Color(0xFFB8C0CC), fontSize = 12.sp),
                 )
@@ -491,7 +550,7 @@ fun DevicePreviewWindow(
                             frame = null
                             rawMetrics = null
                             errorText = "正在重新检测 YUV 原始帧能力…"
-                            val result = probeCache.refresh(executor, device.id)
+                            val result = probeCache.refresh(executor, adbTarget)
                             frameSource = if (result.rawFramesSupported) PreviewFrameSource.RAW_YUV else PreviewFrameSource.ADB_H264
                         }
                     },
@@ -568,6 +627,7 @@ private fun previewStatusText(
     source: PreviewFrameSource?,
     isInteracting: Boolean,
     rawMetrics: RawStreamMetrics?,
+    appTransportState: StreamTransportState,
 ): String = when (source) {
     null -> "正在检测设备原始帧能力…"
     PreviewFrameSource.PNG -> if (isInteracting) "PNG 节流中（15s/帧·降质）" else "PNG 低频预览（150ms/帧）"
@@ -575,7 +635,16 @@ private fun previewStatusText(
         "YUV 原始帧（${metrics.arrivalFps}fps · ${formatBandwidth(metrics.bytesPerSecond)} · 渲染 ${metrics.targetRenderFps}fps）"
     } ?: "YUV 原始帧（正在获取首帧）"
     PreviewFrameSource.ADB_H264 -> "H264 流（adb screenrecord · JavaCV 解码）"
-    PreviewFrameSource.APP_H264 -> "H264 流（设备 App 推流 · 端口 6667）"
+    PreviewFrameSource.APP_H264 -> "H264 流（设备 App 推流 · ${streamTransportLabel(appTransportState)}）"
+}
+
+/** 将流传输状态转成预览窗口可见的简短文案。 */
+internal fun streamTransportLabel(state: StreamTransportState): String = when (state) {
+    StreamTransportState.Stopped -> "等待设备连接"
+    is StreamTransportState.ReverseActive -> "adb reverse"
+    is StreamTransportState.DirectActive -> "Wi-Fi 直连"
+    is StreamTransportState.Reconnecting -> "重连中"
+    is StreamTransportState.Failed -> "连接失败"
 }
 
 /** 格式化原始帧流每秒到达的字节数。 */
