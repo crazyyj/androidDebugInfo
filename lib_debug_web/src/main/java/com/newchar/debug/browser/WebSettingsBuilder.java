@@ -3,13 +3,9 @@ package com.newchar.debug.browser;
 import android.annotation.SuppressLint;
 import android.webkit.WebSettings;
 
-import java.lang.reflect.Method;
-
 public class WebSettingsBuilder {
 
     private WebSettings webSettings;
-
-    private String mAppCachePath;
 
     public WebSettingsBuilder(WebSettings host) {
         webSettings = host;
@@ -19,8 +15,6 @@ public class WebSettingsBuilder {
     public void buildDefault() {
         webSettings.setSupportZoom(true);
         webSettings.setDisplayZoomControls(true);
-        setAppCache(webSettings, WebFileUtils.getWebViewBasicCachePath().getAbsolutePath());
-
         webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);
         webSettings.setUseWideViewPort(true);
         javaScriptEnabled(webSettings, true);
@@ -32,15 +26,15 @@ public class WebSettingsBuilder {
         webSettings.setRenderPriority(WebSettings.RenderPriority.HIGH);
     }
 
+    /**
+     * 保留旧调用兼容；AppCache 不再作为 WebView 会话隔离配置。
+     */
+    @Deprecated
     public WebSettingsBuilder appCachePath(String appCachePath) {
-        mAppCachePath = appCachePath;
         return this;
     }
 
     public WebSettings build(){
-        if (mAppCachePath != null) {
-            setAppCache(webSettings, mAppCachePath);
-        }
         return webSettings;
     }
 
@@ -48,16 +42,6 @@ public class WebSettingsBuilder {
     public static void javaScriptEnabled(WebSettings webSettings, boolean enable) {
         if (webSettings.getJavaScriptEnabled() != enable) {
             webSettings.setJavaScriptEnabled(enable);
-        }
-    }
-
-    private static void setAppCache(WebSettings settings, String path) {
-        try {
-            Method setAppCacheEnabled = WebSettings.class.getMethod("setAppCacheEnabled", boolean.class);
-            setAppCacheEnabled.invoke(settings, true);
-            Method setAppCachePath = WebSettings.class.getMethod("setAppCachePath", String.class);
-            setAppCachePath.invoke(settings, path);
-        } catch (Exception ignored) {
         }
     }
 

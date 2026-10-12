@@ -29,6 +29,7 @@ dependencies {
     implementation project(':lib_debug_core')
     api 'androidx.annotation:annotation:1.7.1'
     api 'androidx.collection:collection:1.4.2'
+    implementation 'androidx.webkit:webkit:1.14.0'
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'

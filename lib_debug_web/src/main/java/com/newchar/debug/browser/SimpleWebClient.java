@@ -1,414 +1,199 @@
 package com.newchar.debug.browser;
 
-import android.graphics.Bitmap;
+import android.content.Context;
 import android.net.Uri;
 import android.net.http.SslError;
-import android.os.Build;
-import android.os.MessageQueue;
-import android.util.Log;
-import android.view.KeyEvent;
 import android.webkit.SslErrorHandler;
-import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
-import android.webkit.WebResourceResponse;
-import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.RenderProcessGoneDetail;
+import android.webkit.CookieManager;
 
-import com.newchar.debug.browser.store.WebResources;
-import com.newchar.debug.browser.store.WebResourcesStore;
+import com.newchar.debug.browser.session.WebSessionStrategy;
+import com.newchar.debug.browser.store.WebResourceMetadataObserver;
 
-import org.json.JSONException;
-import org.json.JSONObject;
-
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 
 /**
- * @author newChar
- * date 2024/3/3
- * @since 当前版本，（以及描述）
- * @since 迭代版本，（以及描述）
+ * 只观察允许的静态资源，不替换 WebView 自身的响应。
  */
 public class SimpleWebClient extends WebViewClient {
 
-    private final Interceptor interceptor;
+    private final WebSessionStrategy.Session session;
+    private final WebSessionStrategy strategy;
+    private final Context appContext;
+    private final CookieManager cookieManager;
+    private final WebResourceMetadataObserver.Page page;
+    private final RenderExitHandler renderExitHandler;
+    private volatile String pageUrl;
+    private final String userAgent;
 
+    /**
+     * 创建兼容默认会话的客户端。
+     */
     public SimpleWebClient() {
-        interceptor = new Interceptor();
+        this(null, null, null);
     }
 
-    // TODO 1. 跨域处理;
-    // TODO 2. encoding 处理;
+    /**
+     * 创建绑定指定浏览会话的客户端。
+     */
+    public SimpleWebClient(WebSessionStrategy.Session session, WebSessionStrategy strategy,
+                           Context context) {
+        this(session, strategy, context, new WebResourceMetadataObserver.Page(), "", null);
+    }
 
+    /** 在主线程固定 Cookie 管理器和 UA，后台不访问 WebView 的 UI API。 */
+    public SimpleWebClient(WebSessionStrategy.Session session, WebSessionStrategy strategy,
+                           Context context, WebResourceMetadataObserver.Page page, String userAgent, RenderExitHandler handler) {
+        this.session = session;
+        this.strategy = strategy;
+        this.appContext = context == null ? null : context.getApplicationContext();
+        this.cookieManager = session == null ? null : strategy.getCookieManager(session);
+        this.page = page;
+        this.userAgent = userAgent;
+        this.renderExitHandler = handler;
+    }
+
+    /** 主线程保存顶层来源，拦截工作线程只读取快照。 */
     @Override
-    public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
-//        super.onReceivedSslError(view, handler, error);
-        handler.proceed();
+    public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+        pageUrl = url;
+        super.onPageStarted(view, url, favicon);
     }
 
+    /** API 26 以上处理退出实例，旧实例不能继续使用。 */
     @Override
-    public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-//        super.onReceivedError(view, request, error);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            String errorMsg = "{}";
-            try {
-                errorMsg = new JSONObject().put("errorMsg ", error.getDescription()).put("errorCode", error.getErrorCode()).toString();
-            } catch (JSONException e) {
+    @androidx.annotation.RequiresApi(26)
+    public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+        WebResourceMetadataObserver.cancelPage(page);
+        if (renderExitHandler != null) renderExitHandler.onGone(view);
+        else {
+            if (view.getParent() instanceof android.view.ViewGroup) {
+                ((android.view.ViewGroup) view.getParent()).removeView(view);
             }
-            Log.e("WebView", "onReceivedError errorUrl =  " + request.getUrl() + " 错误信息= " + errorMsg);
+            view.destroy();
         }
-
-    }
-
-    @Override
-    public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-        try {
-            WebResourceResponse response = interceptor.intercept(request);
-            if (response != null) {
-                return response;
-            }
-        } catch (Exception ignored) {
-            ignored.printStackTrace();
-        }
-        return super.shouldInterceptRequest(view, request);
-    }
-
-    static class Interceptor {
-
-        private final List<ResRequestInterceptor> mInterceptor = new ArrayList<>();
-
-        public Interceptor() {
-            resister(new JSRequestInterceptor());
-            resister(new ImageRequestInterceptor());
-            resister(new CSSRequestInterceptor());
-            resister(new WoffRequestInterceptor());
-        }
-
-        public void resister(ResRequestInterceptor interceptor) {
-            mInterceptor.add(interceptor);
-        }
-
-        public WebResourceResponse intercept(WebResourceRequest request) throws FileNotFoundException {
-            for (ResRequestInterceptor interceptor : mInterceptor) {
-                if (interceptor.shouldIntercept(request)) {
-                    return interceptor.handlerRequest(request);
-                }
-            }
-            return null;
-        }
-
-    }
-
-    final static class ImageRequestInterceptor implements ResRequestInterceptor {
-
-        private static final String[] IF = new String[]{".png", ".webp", ".ico", ".jpg", ".jpeg"};
-
-        public ImageRequestInterceptor() {
-
-        }
-
-        @Override
-        public boolean shouldIntercept(WebResourceRequest request) {
-            if ("GET".equalsIgnoreCase(request.getMethod())) {
-                return isImagePathUrl(request.getUrl()) && isImageMimeType(request.getRequestHeaders());
-            }
-            return false;
-        }
-
-        private boolean isImageMimeType(Map<String, String> requestHeaders) {
-            String requestMimeType = requestHeaders.get("Accept");
-            if (requestMimeType != null) {
-                String[] subMimeType = requestMimeType.split(HEAD_SPLIT_);
-                int imageTypeCount = 0;
-                int otherTypeCount = 0;
-                for (String mimeType : subMimeType) {
-                    if (mimeType.startsWith("image/")) {
-                        imageTypeCount++;
-                    } else {
-                        if (++otherTypeCount > 1) {
-                            return false;
-                        }
-                    }
-                }
-                return imageTypeCount > 0;
-            }
-            return false;
-        }
-
-        private boolean isImagePathUrl(Uri httpUri) {
-            String lastPathSegment = httpUri.getLastPathSegment();
-            if (lastPathSegment != null) {
-                for (String s : IF) {
-                    if (lastPathSegment.endsWith(s)) {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-
-        @Override
-        public WebResourceResponse handlerRequest(WebResourceRequest request) throws FileNotFoundException {
-            WebResources imageFileResources = WebResourcesStore.getResources(request);
-            if (imageFileResources != null) {
-                Map<String, String> responseHeader = imageFileResources.getResponseHeader();
-                String mimeType = responseHeader.get("Content-Type");
-                if (mimeType != null) {
-                    mimeType = mimeType.split(";", 1)[0];
-                }
-                int stateCode = imageFileResources.getStateCode();
-                return new WebResourceResponse(mimeType, buildResponseEncoding(responseHeader, StandardCharsets.UTF_8.name()),
-                        stateCode, stateCode > 200 && stateCode < 300 ? "ok" : "request_error", responseHeader, imageFileResources.getInputSteam());
-            }
-            return null;
-        }
-    }
-
-    final static class JSRequestInterceptor implements ResRequestInterceptor {
-
-        public JSRequestInterceptor() {
-
-        }
-
-        @Override
-        public boolean shouldIntercept(WebResourceRequest request) {
-            try {
-                if ("GET".equalsIgnoreCase(request.getMethod())) {
-                    if (isJsUrl(request.getUrl()) && isJsMimeType(request.getRequestHeaders())) {
-                        return true;
-                    }
-                }
-            } catch (Exception ignored) {
-            }
-            return false;
-        }
-
-        private boolean isJsUrl(Uri uri) {
-            String lastPathSegment = uri.getLastPathSegment();
-            return lastPathSegment != null && lastPathSegment.endsWith(".js");
-        }
-
-        private boolean isJsMimeType(Map<String, String> requestHeaders) {
-            String requestMimeType = requestHeaders.get("Accept");
-            return "*/*".equals(requestMimeType);
-        }
-
-        @Override
-        public WebResourceResponse handlerRequest(WebResourceRequest request) throws FileNotFoundException {
-            WebResources jsFileResources = WebResourcesStore.getResources(request);
-            if (jsFileResources != null) {
-                Map<String, String> responseHeader = jsFileResources.getResponseHeader();
-//                String mimeType = responseHeader.get("Content-Type");
-//                if (mimeType != null) {
-//                    mimeType = mimeType.split(";", 1)[0];
-//                }
-                return new WebResourceResponse(responseHeader.get("Content-Type"), buildResponseEncoding(responseHeader, StandardCharsets.UTF_8.name()), jsFileResources.getInputSteam());
-            }
-            return null;
-        }
-
-    }
-
-    final static class CSSRequestInterceptor implements ResRequestInterceptor {
-
-        public static final String HEAD_SPLIT_CSS = "text/css";
-
-        public CSSRequestInterceptor() {
-        }
-
-        @Override
-        public boolean shouldIntercept(WebResourceRequest request) {
-            try {
-                if ("GET".equalsIgnoreCase(request.getMethod())) {
-                    if (isCSSUrl(request.getUrl()) && isCSSMimeType(request.getRequestHeaders())) {
-                        return true;
-                    }
-                }
-            } catch (Exception ignored) {
-            }
-            return false;
-        }
-
-        private boolean isCSSUrl(Uri uri) {
-            String lastPathSegment = uri.getLastPathSegment();
-            return lastPathSegment != null && lastPathSegment.endsWith(".css");
-        }
-
-        private boolean isCSSMimeType(Map<String, String> requestHeaders) {
-            String requestMimeType = requestHeaders.get("Accept");
-            if (requestMimeType != null) {
-                String[] subMimeType = requestMimeType.split(HEAD_SPLIT_);
-                int cssTypeCount = 0;
-                int otherTypeCount = 0;
-                for (String mimeType : subMimeType) {
-                    if (HEAD_SPLIT_CSS.equals(mimeType)) {
-                        cssTypeCount++;
-                    } else {
-                        if (++otherTypeCount > 1) {
-                            return false;
-                        }
-                    }
-                }
-                return cssTypeCount > 0;
-            }
-            return false;
-        }
-
-        @Override
-        public WebResourceResponse handlerRequest(WebResourceRequest request) throws FileNotFoundException {
-            WebResources cssFileResources = WebResourcesStore.getResources(request);
-            if (cssFileResources != null) {
-                Map<String, String> responseHeader = cssFileResources.getResponseHeader();
-                String mimeType = responseHeader.get("Content-Type");
-                if (mimeType != null) {
-                    mimeType = mimeType.split(";", 1)[0];
-                }
-                return new WebResourceResponse(mimeType, buildResponseEncoding(responseHeader, StandardCharsets.UTF_8.name()), cssFileResources.getInputSteam());
-            }
-            return null;
-        }
-    }
-
-    final static class WoffRequestInterceptor implements ResRequestInterceptor {
-
-        public WoffRequestInterceptor() {
-        }
-
-        @Override
-        public boolean shouldIntercept(WebResourceRequest request) {
-            try {
-                if ("GET".equalsIgnoreCase(request.getMethod())) {
-                    if (isFontUrl(request.getUrl()) && isFontMimeType(request.getRequestHeaders())) {
-                        Log.e("AA", "ziti文件" + request.getRequestHeaders().get("Accept"));
-                        return true;
-                    }
-                }
-            } catch (Exception ignored) {
-            }
-            return false;
-        }
-
-        private boolean isFontUrl(Uri uri) {
-            String lastPathSegment = uri.getLastPathSegment();
-            return lastPathSegment != null && (lastPathSegment.endsWith(".woff") || lastPathSegment.endsWith(".ttf"));
-        }
-
-        private boolean isFontMimeType(Map<String, String> requestHeaders) {
-            String requestMimeType = requestHeaders.get("Accept");
-            if (requestMimeType != null) {
-                String[] subMimeType = requestMimeType.split(HEAD_SPLIT_);
-                int fontTypeCount = 0;
-                int otherTypeCount = 0;
-                for (String mimeType : subMimeType) {
-                    if ("application/font-woff".equals(mimeType) || "font/ttf".equals(mimeType)) {
-                        fontTypeCount++;
-                    } else {
-                        if (++otherTypeCount > 1) {
-                            return false;
-                        }
-                    }
-                }
-                return fontTypeCount > 0;
-            }
-            return false;
-        }
-
-        @Override
-        public WebResourceResponse handlerRequest(WebResourceRequest request) throws FileNotFoundException {
-            WebResources fontFileResources = WebResourcesStore.getResources(request);
-            if (fontFileResources != null) {
-                Map<String, String> responseHeader = fontFileResources.getResponseHeader();
-                String mimeType = responseHeader.get("Content-Type");
-                if (mimeType != null) {
-                    mimeType = mimeType.split(";", 1)[0];
-                }
-                return new WebResourceResponse(mimeType, buildResponseEncoding(responseHeader, StandardCharsets.UTF_8.name()), fontFileResources.getInputSteam());
-            }
-            return null;
-        }
-    }
-
-    private static String buildResponseEncoding(Map<String, String> responseHeader, String defaultCharset) {
-        String contentEncoding = responseHeader.get("Content-Encoding");
-        if (contentEncoding != null) {
-            return contentEncoding;
-        }
-        String contentType = responseHeader.get("Content-Type");
-        if (contentType != null && contentType.contains("charset")) {
-            String[] subContentType = contentType.split(";");
-            for (String type : subContentType) {
-                if (type.contains("charset")) {
-                    return type;
-                }
-            }
-        }
-        return "charset=" + defaultCharset;
-    }
-
-    interface ResRequestInterceptor {
-
-        String HEAD_SPLIT_ = ",";
-
-        boolean shouldIntercept(WebResourceRequest request);
-
-        WebResourceResponse handlerRequest(WebResourceRequest request) throws FileNotFoundException;
-    }
-
-    @Override
-    public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-        String scheme = request.getUrl().getScheme();
-        if (scheme != null && !scheme.startsWith("http")) {
-            super.shouldOverrideUrlLoading(view, request);
-            return true;
-        }
-        view.loadUrl(request.getUrl().toString()/*, request.getRequestHeaders()*/);
         return true;
     }
 
-    long a;
-
-    @Override
-    public void onPageStarted(WebView view, String url, Bitmap favicon) {
-        super.onPageStarted(view, url, favicon);
-        a = System.currentTimeMillis();
-        Log.e("QAQAQQQ", url + " onPageStarted" + (System.currentTimeMillis() - a));
-        WebSettings settings = view.getSettings();
-        if (!settings.getBlockNetworkImage()) {
-            settings.setBlockNetworkImage(true);
-        }
+    /** 工厂负责移除实例，宿主下次显示时按原会话重新创建。 */
+    public interface RenderExitHandler {
+        /** 处理一个受影响的实例，重复回调保持幂等。 */
+        void onGone(WebView view);
     }
 
+    /**
+     * 遇到证书错误时终止请求，避免静默放行不可信证书。
+     */
     @Override
-    public void onPageCommitVisible(WebView view, String url) {
-        super.onPageCommitVisible(view, url);
-        Log.e("QAQAQQQ", url + " onPageCommitVisible" + (System.currentTimeMillis() - a));
-        WebSettings settings = view.getSettings();
-        if (settings.getBlockNetworkImage()) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                view.getWebViewLooper().getQueue().addIdleHandler(() -> {
-                    if (settings.getBlockNetworkImage()) {
-                        settings.setBlockNetworkImage(false);
-                    }
-                    return false;
-                });
-            } else {
-                view.postDelayed(() -> settings.setBlockNetworkImage(false), 50);
+    public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
+        handler.cancel();
+    }
+
+    /**
+     * 快照并异步投递候选静态资源，始终让内核继续处理原始请求。
+     */
+    @Override
+    public android.webkit.WebResourceResponse shouldInterceptRequest(
+            WebView view, WebResourceRequest request) {
+        if (session != null && session.isActive() && strategy != null && appContext != null
+                && request != null && !request.isForMainFrame()
+                && "GET".equalsIgnoreCase(request.getMethod()) && isCandidate(request.getUrl())) {
+            Map<String, String> headers = new HashMap<>(request.getRequestHeaders());
+            java.util.Iterator<String> names = headers.keySet().iterator();
+            while (names.hasNext()) if ("User-Agent".equalsIgnoreCase(names.next())) names.remove();
+            headers.put("User-Agent", userAgent);
+            String resourceUrl = cleanUrl(request.getUrl());
+            String referer = findHeader(headers, "Referer");
+            String top = pageUrl;
+            boolean sameOrigin = isSameOrigin(top, resourceUrl)
+                    && (referer == null || isSameOrigin(referer, top));
+            String authorization = findHeader(headers, "Authorization");
+            WebResourceMetadataObserver.submit(appContext, new WebResourceMetadataObserver.Snapshot(
+                    resourceUrl, page, session, cookieManager, authorization, sameOrigin, headers));
+        }
+        return null;
+    }
+
+    /**
+     * 允许 WebView 内核正常处理 HTTP(S) 导航。
+     */
+    @Override
+    public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+        String scheme = request.getUrl().getScheme();
+        return scheme != null && !"http".equalsIgnoreCase(scheme)
+                && !"https".equalsIgnoreCase(scheme);
+    }
+
+    /**
+     * 仅按 URL 路径扩展名选择静态观察对象。
+     */
+    private boolean isCandidate(Uri uri) {
+        String scheme = uri.getScheme();
+        if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) {
+            return false;
+        }
+        String path = uri.getPath();
+        if (path == null) {
+            return false;
+        }
+        String lower = path.toLowerCase(Locale.US);
+        String[] extensions = {".js", ".mjs", ".css", ".png", ".webp", ".ico", ".jpg",
+                ".jpeg", ".gif", ".svg", ".woff", ".woff2", ".ttf", ".otf"};
+        for (String extension : extensions) {
+            if (lower.endsWith(extension)) {
+                return true;
             }
         }
+        return false;
     }
 
-    @Override
-    public void onPageFinished(WebView view, String url) {
-        super.onPageFinished(view, url);
-        Log.e("QAQAQQQ", url + " onPageFinished" + (System.currentTimeMillis() - a));
+    /**
+     * 去除 fragment，同时保留可能参与资源身份的 query。
+     */
+    private String cleanUrl(Uri uri) {
+        return uri.buildUpon().fragment(null).build().toString();
     }
 
+    /**
+     * 判断 Referer 与目标资源是否处于同源。
+     */
+    private boolean isSameOrigin(String pageUrl, String resourceUrl) {
+        if (pageUrl == null) {
+            return false;
+        }
+        Uri page = Uri.parse(pageUrl);
+        Uri resource = Uri.parse(resourceUrl);
+        return equal(page.getScheme(), resource.getScheme())
+                && equal(page.getHost(), resource.getHost())
+                && effectivePort(page) == effectivePort(resource);
+    }
+
+    /**
+     * 比较可能为空的 URI 字段。
+     */
+    private boolean equal(String first, String second) {
+        return first == null ? second == null : first.equalsIgnoreCase(second);
+    }
+
+    /**
+     * 忽略请求头名称大小写读取指定头。
+     */
+    private String findHeader(Map<String, String> headers, String name) {
+        for (Map.Entry<String, String> entry : headers.entrySet()) {
+            if (name.equalsIgnoreCase(entry.getKey())) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
+    /** 同源比较归一化默认端口。 */
+    private int effectivePort(Uri uri) {
+        return uri.getPort() >= 0 ? uri.getPort() : "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
+    }
 }

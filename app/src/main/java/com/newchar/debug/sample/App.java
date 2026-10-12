@@ -38,10 +38,14 @@ public class App extends Application {
         });
     }
 
+    /** 初始化宿主，并声明辅助资源探测所需的网络环境约束。 */
     @Override
     public void onCreate() {
         super.onCreate();
         ApplicationCompat.init(this);
+        // 本宿主及所接入 SDK 不安装全局 HTTP Authenticator，辅助探测才可显式启用。
+        com.newchar.debug.browser.store.WebResourceMetadataObserver
+                .setHostConfirmedNoGlobalAuthenticator(true);
 //        new DebugStackMotion().stringFromJNI();
 //        initTimeCold = System.currentTimeMillis();
 //        WebView.setWebContentsDebuggingEnabled(true);

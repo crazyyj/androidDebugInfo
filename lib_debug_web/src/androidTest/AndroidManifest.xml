@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <application>
+        <!-- 独立测试应用不自动初始化调试宿主，避免与已安装业务应用的固定 authority 冲突。 -->
+        <provider android:name="com.newchar.debug.init.InitContainer" tools:node="remove" />
+    </application>
+</manifest>
