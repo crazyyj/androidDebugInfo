@@ -16,7 +16,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 import android.app.TimePickerDialog;
 
-import com.newchar.debug.utils.DebugUtils;
+import com.newchar.debug.accessibility.ScriptAccessibilityService;
 import com.newchar.debug.utils.PcConnectionChecker;
 import com.newchar.debug.utils.WifiScheduleReceiver;
 import com.newchar.debug.utils.ViewUtils;
@@ -44,6 +44,7 @@ public class PCToolsPlugin extends ScreenDisplayPlugin {
     private TextView mStatusView;
     private EditText mInputView;
     private Button mSendView;
+    private Button mAccessibilityView;
     private Switch mWifiSwitch;
     private Spinner mWifiNetworkSpinner;
     private EditText mWifiSsidView;
@@ -96,6 +97,7 @@ public class PCToolsPlugin extends ScreenDisplayPlugin {
         if (mWifiSwitch != null) {
             mWifiSwitch.setEnabled(connected && !mWifiCommandInProgress);
         }
+        updateAccessibilityState();
     }
 
     /** 创建 PC 通信与 WiFi 开关面板。 */
@@ -113,6 +115,11 @@ public class PCToolsPlugin extends ScreenDisplayPlugin {
         mStatusView.setTextSize(14);
         mStatusView.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
         mContainer.addView(mStatusView, layoutParams);
+
+        mAccessibilityView = new Button(context);
+        mAccessibilityView.setOnClickListener(view ->
+                ScriptAccessibilityService.openSettings(view.getContext()));
+        mContainer.addView(mAccessibilityView, layoutParams);
 
         mWifiSwitch = new Switch(context);
         mWifiSwitch.setText("WiFi 开关");
@@ -186,6 +193,13 @@ public class PCToolsPlugin extends ScreenDisplayPlugin {
         return mContainer;
     }
 
+    /** 更新无障碍脚本服务的授权状态入口。 */
+    private void updateAccessibilityState() {
+        if (mAccessibilityView == null) return;
+        boolean enabled = ScriptAccessibilityService.isEnabled(mAccessibilityView.getContext());
+        mAccessibilityView.setText(enabled ? "无障碍脚本服务已开启" : "开启无障碍脚本服务");
+    }
+
     /** 通过 PC reverse 通道发送普通文本消息。 */
     private void sendMessage() {
         if (!PcConnectionChecker.get().isConnected() || mInputView == null) {
@@ -204,7 +218,7 @@ public class PCToolsPlugin extends ScreenDisplayPlugin {
                     DataOutputStream out = new DataOutputStream(socket.getOutputStream());
                     DataInputStream in = new DataInputStream(socket.getInputStream());
                     // 格式: MESSAGE|deviceId|content
-                    String line = "MESSAGE|" + DebugUtils.getDeviceId() + "|" + message;
+                    String line = "MESSAGE|" + PcConnectionChecker.get().getCardDeviceId() + "|" + message;
                     out.writeUTF(line);
                     out.flush();
                     // 等待 ACK
@@ -272,7 +286,7 @@ public class PCToolsPlugin extends ScreenDisplayPlugin {
                 DataOutputStream out = new DataOutputStream(socket.getOutputStream());
                 DataInputStream in = new DataInputStream(socket.getInputStream());
                 String suffix = params.isEmpty() ? "" : "|" + params;
-                out.writeUTF("WIFI_CMD|" + DebugUtils.getDeviceId() + "|" + action + suffix);
+                out.writeUTF("WIFI_CMD|" + PcConnectionChecker.get().getCardDeviceId() + "|" + action + suffix);
                 out.flush();
                 return in.readUTF();
             } finally {

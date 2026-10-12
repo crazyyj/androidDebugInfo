@@ -35,6 +35,7 @@ public final class PcConnectionChecker {
     private volatile boolean mConnected;
     private volatile boolean mStarted;
     private volatile Context mApplicationContext;
+    private volatile InputCommandHandler mInputCommandHandler;
     private int mStartOwners;
 
     private final Runnable mCheckRunnable = new Runnable() {
@@ -52,6 +53,12 @@ public final class PcConnectionChecker {
          * @param connected 是否能连接到 PC 端 127.0.0.1:6666 服务
          */
         void onPcConnectionChanged(boolean connected);
+    }
+
+    /** App 内可选的脚本单步执行入口，后续由辅助服务注册实现。 */
+    public interface InputCommandHandler {
+        /** 执行 JSON 单步并返回 OK|消息或 ERROR|消息。 */
+        String execute(String stepJson);
     }
 
     private PcConnectionChecker() {
@@ -133,6 +140,16 @@ public final class PcConnectionChecker {
         }
     }
 
+    /** 注册或清除 App 内脚本执行入口。 */
+    public void setInputCommandHandler(InputCommandHandler handler) {
+        mInputCommandHandler = handler;
+    }
+
+    /** 返回用于 PC 协议归并的设备标识，优先采用 PC 经 ADB 下发的序列号。 */
+    public String getCardDeviceId() {
+        return AdbDeviceIdentity.resolve(mApplicationContext);
+    }
+
     /**
      * 创建与 PC 通信的 Socket，并在 DebugNet VPN 存在时请求绕过 TUN。
      *
@@ -178,11 +195,12 @@ public final class PcConnectionChecker {
             try {
                 DataOutputStream out = new DataOutputStream(socket.getOutputStream());
                 DataInputStream in = new DataInputStream(socket.getInputStream());
-                out.writeUTF("HEARTBEAT|" + DebugUtils.getDeviceId() + "|" + System.currentTimeMillis());
+                out.writeUTF("HEARTBEAT|" + getCardDeviceId() + "|" + System.currentTimeMillis());
                 out.flush();
                 String response = in.readUTF();
-                return "WIFI_STATUS_REQUEST".equals(response)
-                        ? sendWifiStatus(out, in) : "ACK".equals(response);
+                if ("WIFI_STATUS_REQUEST".equals(response)) return sendWifiStatus(out, in);
+                if (response.startsWith("INPUT_COMMAND|")) return executeInputCommand(response, out, in);
+                return "ACK".equals(response);
             } finally {
                 socket.close();
             }
@@ -201,7 +219,24 @@ public final class PcConnectionChecker {
         boolean enabled = manager != null && manager.isWifiEnabled();
         String ssid = WifiStatusChecker.getCurrentWifiSsid(context);
         String encodedSsid = Base64.encodeToString(ssid.getBytes(StandardCharsets.UTF_8), Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
-        out.writeUTF("WIFI_STATUS|" + DebugUtils.getDeviceId() + "|" + enabled + "|" + encodedSsid);
+        out.writeUTF("WIFI_STATUS|" + getCardDeviceId() + "|" + enabled + "|" + encodedSsid);
+        out.flush();
+        return "ACK".equals(in.readUTF());
+    }
+
+    /** 执行 PC 下发的 App 指令，并通过当前心跳 Socket 回传结果。 */
+    private boolean executeInputCommand(String command, DataOutputStream out,
+            DataInputStream in) throws IOException {
+        String[] parts = command.split("\\|", 3);
+        if (parts.length < 3) return false;
+        String stepJson = new String(Base64.decode(parts[2], Base64.URL_SAFE), StandardCharsets.UTF_8);
+        InputCommandHandler handler = mInputCommandHandler;
+        String result = handler == null ? "ERROR|辅助服务执行器未注册" : handler.execute(stepJson);
+        boolean success = result != null && result.startsWith("OK|");
+        String message = result == null ? "执行入口未返回结果" : result.substring(result.indexOf('|') + 1);
+        String encoded = Base64.encodeToString(message.getBytes(StandardCharsets.UTF_8),
+                Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
+        out.writeUTF("INPUT_RESULT|" + getCardDeviceId() + "|" + parts[1] + "|" + success + "|" + encoded);
         out.flush();
         return "ACK".equals(in.readUTF());
     }

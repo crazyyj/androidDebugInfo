@@ -9,7 +9,6 @@ import android.os.Build;
 import android.util.Base64;
 import android.util.Log;
 
-import com.newchar.debug.utils.DebugUtils;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -80,7 +79,7 @@ public final class WifiScheduleReceiver extends BroadcastReceiver {
             try {
                 DataOutputStream out = new DataOutputStream(socket.getOutputStream());
                 DataInputStream in = new DataInputStream(socket.getInputStream());
-                out.writeUTF("WIFI_CMD|" + DebugUtils.getDeviceId() + "|connect-saved|" + encode(ssid));
+                out.writeUTF("WIFI_CMD|" + AdbDeviceIdentity.resolve(context) + "|connect-saved|" + encode(ssid));
                 out.flush();
                 Log.i(TAG, "定时 WiFi 结果: " + in.readUTF());
             } finally {

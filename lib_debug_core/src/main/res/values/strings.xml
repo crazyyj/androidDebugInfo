@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="debug_script_accessibility_label">DebugView 脚本执行</string>
+    <string name="debug_script_accessibility_description">为 PC 输入脚本提供跨应用节点读取、手势执行和状态等待能力</string>
+</resources>
