@@ -5,6 +5,8 @@ import android.os.Build;
 import android.os.Looper;
 import android.util.Base64;
 
+import org.json.JSONObject;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -15,6 +17,7 @@ public final class InputToolMain {
     private static final Object OUTPUT_LOCK = new Object();
     private static InputScriptRunner currentRunner;
     private static PlaybackControl currentControl;
+    private static final ExternalFallbackCoordinator EXTERNAL_FALLBACK = new ExternalFallbackCoordinator();
 
     /** 初始化输入环境并持续读取 PC 控制命令。 */
     public static void main(String[] args) {
@@ -41,6 +44,7 @@ public final class InputToolMain {
             else if ("PAUSE".equals(line)) pauseCurrent();
             else if ("RESUME".equals(line)) resumeCurrent();
             else if ("CANCEL".equals(line)) cancelCurrent();
+            else if (line.startsWith("ACCESSIBILITY_RESULT|")) completeExternalFallback(line);
             else if ("STOP".equals(line)) break;
         }
     }
@@ -52,9 +56,10 @@ public final class InputToolMain {
         try {
             String json = new String(Base64.decode(encodedScript, Base64.DEFAULT), StandardCharsets.UTF_8);
             AgentScript script = AgentScript.parse(json);
+            EXTERNAL_FALLBACK.configure(script);
             currentControl = new PlaybackControl();
             currentRunner = new InputScriptRunner(script, injector, shell, currentControl,
-                    InputToolMain::report);
+                    InputToolMain::report, EXTERNAL_FALLBACK);
             new Thread(currentRunner, "newchar-input-runner").start();
         } catch (Throwable throwable) {
             printLine("FATAL|" + encode(errorMessage(throwable)));
@@ -78,8 +83,17 @@ public final class InputToolMain {
     /** 取消当前运行。 */
     private static synchronized void cancelCurrent() {
         if (currentControl != null) currentControl.cancel();
+        EXTERNAL_FALLBACK.cancel();
         currentControl = null;
         currentRunner = null;
+    }
+
+    /** 解析 PC 返回的辅助服务执行结果。 */
+    private static void completeExternalFallback(String line) {
+        String[] parts = line.split("\\|", 3);
+        boolean success = parts.length > 1 && Boolean.parseBoolean(parts[1]);
+        String message = parts.length > 2 ? decode(parts[2]) : "辅助服务未返回消息";
+        EXTERNAL_FALLBACK.complete(new ShellBridge.BackendResult(success, message));
     }
 
     /** 输出统一状态协议。 */
@@ -101,6 +115,11 @@ public final class InputToolMain {
     private static String encode(String value) {
         byte[] bytes = (value == null ? "" : value).getBytes(StandardCharsets.UTF_8);
         return Base64.encodeToString(bytes, Base64.NO_WRAP);
+    }
+
+    /** 解码 PC 控制协议中的 Base64 文本。 */
+    private static String decode(String value) {
+        return new String(Base64.decode(value, Base64.DEFAULT), StandardCharsets.UTF_8);
     }
 
     /** 提取异常类型与消息。 */
@@ -126,5 +145,66 @@ public final class InputToolMain {
 
     /** 禁止实例化命令入口。 */
     private InputToolMain() {
+    }
+
+    /** 协调 agent 执行线程与 PC 标准输入线程之间的辅助服务请求。 */
+    private static final class ExternalFallbackCoordinator implements InputScriptRunner.ExternalStepExecutor {
+        private ShellBridge.BackendResult result;
+        private boolean waiting;
+        private AgentScript script;
+
+        /** 保存当前脚本上下文，供单步辅助服务载荷使用。 */
+        synchronized void configure(AgentScript value) {
+            script = value;
+        }
+
+        /** 发出辅助服务请求并限时等待 PC 回应。 */
+        @Override
+        public synchronized ShellBridge.BackendResult execute(int index, AgentScript.Step step,
+                String message) throws InterruptedException {
+            result = null;
+            waiting = true;
+            printLine("ACCESSIBILITY_REQUEST|" + index + "|" + encode(payload(step))
+                    + "|" + encode(message));
+            long deadline = System.currentTimeMillis() + responseTimeoutMs(step);
+            while (waiting && result == null && System.currentTimeMillis() < deadline) {
+                wait(Math.max(1L, deadline - System.currentTimeMillis()));
+            }
+            waiting = false;
+            return result == null ? ShellBridge.BackendResult.failure("辅助服务响应超时") : result;
+        }
+
+        /** 构建包含录制尺寸、默认包名和步骤的 App 执行载荷。 */
+        private String payload(AgentScript.Step step) {
+            JSONObject payload = new JSONObject();
+            try {
+                payload.put("sourceWidth", script == null ? 0 : script.sourceWidth);
+                payload.put("sourceHeight", script == null ? 0 : script.sourceHeight);
+                payload.put("targetPackage", script == null ? "" : script.targetPackage);
+                payload.put("step", new JSONObject(step.source.toString()));
+            } catch (Exception ignored) {
+                // 已解析脚本的固定字段不会产生 JSON 异常。
+            }
+            return payload.toString();
+        }
+
+        /** 按步骤耗时给辅助服务保留通信与执行余量。 */
+        private long responseTimeoutMs(AgentScript.Step step) {
+            long operationMs = "wait".equals(step.type) ? step.waitMs : step.durationMs;
+            return Math.max(15000L, Math.min(620000L, operationMs + 15000L));
+        }
+
+        /** 接收 PC 返回结果并唤醒执行线程。 */
+        synchronized void complete(ShellBridge.BackendResult value) {
+            if (!waiting) return;
+            result = value;
+            notifyAll();
+        }
+
+        /** 取消当前等待。 */
+        synchronized void cancel() {
+            waiting = false;
+            notifyAll();
+        }
     }
 }

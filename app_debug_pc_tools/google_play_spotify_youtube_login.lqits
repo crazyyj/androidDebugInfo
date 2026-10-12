@@ -1,66 +1,92 @@
 {
   "magic": "LQITS",
-  "version": 1,
+  "version": 2,
   "scriptId": "google_play_spotify_youtube_login",
   "name": "Google Play 搜索 Spotify 后进入 YouTube 登录",
   "sourceWidth": 1080,
   "sourceHeight": 2400,
   "targetPackage": "com.android.vending",
   "steps": [
-    { "id": "launch_google_play", "type": "launch_app", "packageName": "com.android.vending" },
-    { "id": "wait_google_play", "type": "wait", "waitMs": 2500 },
-    { "id": "check_google_play", "type": "package_check", "expectedPackage": "com.android.vending", "timeoutMs": 5000 },
+    { "id": "launch_google_play", "name": "打开 Google Play", "type": "launch_app", "packageName": "com.android.vending" },
+    { "id": "wait_google_play", "name": "等待 Google Play 加载", "type": "wait", "waitMs": 2500 },
+    {
+      "id": "check_google_play",
+      "name": "确认 Google Play 已在前台",
+      "type": "wait",
+      "waitMs": 5000,
+      "waitState": {
+        "conditions": [
+          { "kind": "foreground", "packageName": "com.android.vending" }
+        ]
+      }
+    },
     {
       "id": "open_search_tab",
+      "name": "点击 Google Play 搜索入口",
       "type": "node_tap",
       "selector": { "text": "搜索" }
     },
-    { "id": "wait_search_page", "type": "wait", "waitMs": 600 },
+    { "id": "wait_search_page", "name": "等待搜索页面加载", "type": "wait", "waitMs": 600 },
     {
       "id": "focus_search_input",
+      "name": "点击搜索输入框",
       "type": "node_tap",
       "selector": { "text": "搜索应用和游戏" }
     },
-    { "id": "wait_search_input", "type": "wait", "waitMs": 300 },
-    { "id": "type_s", "type": "key", "keyCode": 47 },
-    { "id": "type_p", "type": "key", "keyCode": 44 },
-    { "id": "type_o", "type": "key", "keyCode": 43 },
-    { "id": "type_t", "type": "key", "keyCode": 48 },
-    { "id": "type_i", "type": "key", "keyCode": 37 },
-    { "id": "type_f", "type": "key", "keyCode": 34 },
-    { "id": "type_y", "type": "key", "keyCode": 53 },
-    { "id": "confirm_search", "type": "key", "keyCode": 66 },
-    { "id": "wait_search_result", "type": "wait", "waitMs": 2500 },
+    { "id": "wait_search_input", "name": "等待搜索输入框获得焦点", "type": "wait", "waitMs": 300 },
+    { "id": "type_s", "name": "输入字符 S", "type": "key", "keyCode": 47 },
+    { "id": "type_p", "name": "输入字符 P", "type": "key", "keyCode": 44 },
+    { "id": "type_o", "name": "输入字符 O", "type": "key", "keyCode": 43 },
+    { "id": "type_t", "name": "输入字符 T", "type": "key", "keyCode": 48 },
+    { "id": "type_i", "name": "输入字符 I", "type": "key", "keyCode": 37 },
+    { "id": "type_f", "name": "输入字符 F", "type": "key", "keyCode": 34 },
+    { "id": "type_y", "name": "输入字符 Y", "type": "key", "keyCode": 53 },
+    { "id": "confirm_search", "name": "确认搜索 Spotify", "type": "key", "keyCode": 66 },
+    { "id": "wait_search_result", "name": "等待 Spotify 搜索结果", "type": "wait", "waitMs": 2500 },
     {
       "id": "get_app",
+      "name": "点击安装 Spotify",
       "type": "node_tap",
       "selector": { "text": "安装" }
     },
-    { "id": "wait_after_get", "type": "wait", "waitMs": 1200 },
+    { "id": "wait_after_get", "name": "等待安装操作响应", "type": "wait", "waitMs": 1200 },
     {
       "id": "open_preview",
+      "name": "打开 Spotify 预览图",
       "type": "node_tap",
       "selector": { "contentDescription": "第 1 张屏幕截图，共 7 张" }
     },
-    { "id": "wait_preview", "type": "wait", "waitMs": 1000 },
-    { "id": "exit_preview", "type": "key", "keyCode": 4 },
-    { "id": "wait_app_detail_again", "type": "wait", "waitMs": 500 },
-    { "id": "exit_app_detail", "type": "key", "keyCode": 4 },
-    { "id": "wait_search_result_again", "type": "wait", "waitMs": 500 },
-    { "id": "exit_search_result", "type": "key", "keyCode": 4 },
-    { "id": "wait_google_play_home", "type": "wait", "waitMs": 500 },
-    { "id": "exit_google_play", "type": "key", "keyCode": 4 },
-    { "id": "launch_youtube", "type": "launch_app", "packageName": "com.google.android.youtube" },
-    { "id": "wait_youtube", "type": "wait", "waitMs": 2500 },
-    { "id": "check_youtube", "type": "package_check", "expectedPackage": "com.google.android.youtube", "timeoutMs": 5000 },
+    { "id": "wait_preview", "name": "等待预览图打开", "type": "wait", "waitMs": 1000 },
+    { "id": "exit_preview", "name": "退出预览图", "type": "key", "keyCode": 4 },
+    { "id": "wait_app_detail_again", "name": "等待返回 Spotify 详情页", "type": "wait", "waitMs": 500 },
+    { "id": "exit_app_detail", "name": "退出 Spotify 详情页", "type": "key", "keyCode": 4 },
+    { "id": "wait_search_result_again", "name": "等待返回搜索结果页", "type": "wait", "waitMs": 500 },
+    { "id": "exit_search_result", "name": "退出搜索结果页", "type": "key", "keyCode": 4 },
+    { "id": "wait_google_play_home", "name": "等待返回 Google Play 首页", "type": "wait", "waitMs": 500 },
+    { "id": "exit_google_play", "name": "退出 Google Play", "type": "key", "keyCode": 4 },
+    { "id": "launch_youtube", "name": "打开 YouTube", "type": "launch_app", "packageName": "com.google.android.youtube" },
+    { "id": "wait_youtube", "name": "等待 YouTube 加载", "type": "wait", "waitMs": 2500 },
+    {
+      "id": "check_youtube",
+      "name": "确认 YouTube 已在前台",
+      "type": "wait",
+      "waitMs": 5000,
+      "waitState": {
+        "conditions": [
+          { "kind": "foreground", "packageName": "com.google.android.youtube" }
+        ]
+      }
+    },
     {
       "id": "open_youtube_me",
+      "name": "点击 YouTube 右下角“我的”",
       "type": "node_tap",
       "selector": { "contentDescription": "我" }
     },
-    { "id": "wait_youtube_me", "type": "wait", "waitMs": 1000 },
+    { "id": "wait_youtube_me", "name": "等待“我的”页面加载", "type": "wait", "waitMs": 1000 },
     {
       "id": "open_youtube_login",
+      "name": "点击 YouTube 登录",
       "type": "node_tap",
       "selector": { "text": "登录" }
     }

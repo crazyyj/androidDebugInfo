@@ -6,15 +6,22 @@ final class PlaybackControl {
     private final Object pauseLock = new Object();
     private volatile boolean paused;
     private volatile boolean cancelled;
+    private long pauseStartedNanos;
+    private long totalPausedNanos;
 
     /** 暂停后续事件注入。 */
     void pause() {
-        paused = true;
+        synchronized (pauseLock) {
+            if (paused) return;
+            paused = true;
+            pauseStartedNanos = System.nanoTime();
+        }
     }
 
     /** 恢复执行并唤醒等待线程。 */
     void resume() {
         synchronized (pauseLock) {
+            if (paused) totalPausedNanos += System.nanoTime() - pauseStartedNanos;
             paused = false;
             pauseLock.notifyAll();
         }
@@ -29,6 +36,14 @@ final class PlaybackControl {
     /** 返回任务是否已取消。 */
     boolean isCancelled() {
         return cancelled;
+    }
+
+    /** 返回当前运行累计处于暂停状态的纳秒数。 */
+    long pausedDurationNanos() {
+        synchronized (pauseLock) {
+            long current = paused ? System.nanoTime() - pauseStartedNanos : 0L;
+            return totalPausedNanos + current;
+        }
     }
 
     /** 阻塞到允许继续或任务取消。 */

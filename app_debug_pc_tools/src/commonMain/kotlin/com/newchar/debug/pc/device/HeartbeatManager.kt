@@ -9,11 +9,15 @@ import com.newchar.debug.pc.executor.CommandExecutor
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.Base64
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -27,6 +31,9 @@ data class PcMessage(
 
 /** App 通过 PC 通道回传的 WiFi 状态。 */
 data class AppWifiStatus(val enabled: Boolean, val ssid: String)
+
+/** App 内执行入口返回的脚本单步结果。 */
+data class AppInputResult(val success: Boolean, val message: String)
 
 /**
  * 心跳保活 + adb reverse 管理器。
@@ -55,6 +62,8 @@ class HeartbeatManager(
     // 每个设备最近一次心跳时间戳
     private val lastHeartbeatAt = ConcurrentHashMap<String, Long>()
     private val wifiStatusWaiters = ConcurrentHashMap<String, CompletableDeferred<AppWifiStatus>>()
+    private val inputCommands = ConcurrentHashMap<String, PendingInputCommand>()
+    private val inputWaiters = ConcurrentHashMap<String, CompletableDeferred<AppInputResult>>()
 
     // TCP Server 用于接收 App reverse 通道的心跳
     private var serverSocket: ServerSocket? = null
@@ -123,6 +132,21 @@ class HeartbeatManager(
             withTimeout(APP_WIFI_STATUS_TIMEOUT_MS) { waiter.await() }
         } finally {
             wifiStatusWaiters.remove(device.id, waiter)
+        }
+    }
+
+    /** 复用心跳 reverse 通道，请求 App 已注册的辅助服务执行入口处理单步。 */
+    suspend fun requestAppInput(deviceId: String, stepJson: String): Result<AppInputResult> = runCatching {
+        val requestId = UUID.randomUUID().toString()
+        val waiter = CompletableDeferred<AppInputResult>()
+        val command = PendingInputCommand(requestId, encodeProtocol(stepJson))
+        check(inputCommands.putIfAbsent(deviceId, command) == null) { "该设备已有辅助服务指令等待执行" }
+        inputWaiters[requestId] = waiter
+        try {
+            withTimeout(inputTimeoutMs(stepJson)) { waiter.await() }
+        } finally {
+            inputCommands.remove(deviceId, command)
+            inputWaiters.remove(requestId, waiter)
         }
     }
 
@@ -200,14 +224,14 @@ class HeartbeatManager(
                     // 解析心跳消息：格式 "HEARTBEAT|deviceId|timestamp"
                     val parts = line.split('|')
                     if (parts.size >= 2 && parts[0] == "HEARTBEAT") {
-                        val deviceId = parts[1]
+                        val deviceId = resolveKnownDeviceId(parts[1])
                         val timestamp = parts.getOrNull(2)?.toLongOrNull() ?: System.currentTimeMillis()
                         lastHeartbeatAt[deviceId] = timestamp
                         outStream.writeUTF(buildHeartbeatReply(deviceId))
                         outStream.flush()
                     } else if (parts.size >= 2 && parts[0] == "ONLINE") {
                         // App 上线通知
-                        val deviceId = parts[1]
+                        val deviceId = resolveKnownDeviceId(parts[1])
                         val wifiIp = parts.getOrNull(2) ?: ""
                         val wifiSsid = parts.getOrNull(3) ?: ""
                         lastHeartbeatAt[deviceId] = System.currentTimeMillis()
@@ -217,7 +241,7 @@ class HeartbeatManager(
                         refreshNow(DeviceRefreshSource.MANUAL)
                     } else if (parts.size >= 3 && parts[0] == "MESSAGE") {
                         // 手机端发送的消息：格式 "MESSAGE|deviceId|content"
-                        val deviceId = parts[1]
+                        val deviceId = resolveKnownDeviceId(parts[1])
                         val content = parts.subList(2, parts.size).joinToString("|")
                         lastHeartbeatAt[deviceId] = System.currentTimeMillis()
                         outStream.writeUTF("ACK")
@@ -226,7 +250,7 @@ class HeartbeatManager(
                             _messages.emit(PcMessage(deviceId = deviceId, content = content))
                         }
                     } else if (parts.size >= 3 && parts[0] == "WIFI_CMD") {
-                        val deviceId = parts[1]
+                        val deviceId = resolveKnownDeviceId(parts[1])
                         val action = parts[2]
                         val params = parts.drop(3).joinToString("|")
                         lastHeartbeatAt[deviceId] = System.currentTimeMillis()
@@ -236,6 +260,8 @@ class HeartbeatManager(
                         outStream.flush()
                     } else if (parts.size >= 4 && parts[0] == "WIFI_STATUS") {
                         handleAppWifiStatus(parts, outStream)
+                    } else if (parts.size >= 5 && parts[0] == "INPUT_RESULT") {
+                        handleAppInputResult(parts, outStream)
                     }
                 }
             }.onFailure {
@@ -253,7 +279,7 @@ class HeartbeatManager(
 
     /** 接收 App 的 WiFi 状态回传，并唤醒对应的状态请求。 */
     private fun handleAppWifiStatus(parts: List<String>, outStream: DataOutputStream) {
-        val deviceId = parts[1]
+        val deviceId = resolveKnownDeviceId(parts[1])
         val ssid = runCatching { String(Base64.getUrlDecoder().decode(parts.getOrNull(3).orEmpty())) }.getOrDefault("")
         wifiStatusWaiters.remove(deviceId)?.complete(AppWifiStatus(parts[2].toBoolean(), ssid))
         lastHeartbeatAt[deviceId] = System.currentTimeMillis()
@@ -263,7 +289,46 @@ class HeartbeatManager(
 
     /** 在对应设备存在等待任务时，将状态读取请求附在本次心跳响应中。 */
     private fun buildHeartbeatReply(deviceId: String): String =
-        if (wifiStatusWaiters.containsKey(deviceId)) "WIFI_STATUS_REQUEST" else "ACK"
+        inputCommands[deviceId]?.let { "INPUT_COMMAND|${it.requestId}|${it.encodedStep}" }
+            ?: if (wifiStatusWaiters.containsKey(deviceId)) "WIFI_STATUS_REQUEST" else "ACK"
+
+    /** 接收 App 输入执行结果并唤醒对应 PC 请求。 */
+    private fun handleAppInputResult(parts: List<String>, outStream: DataOutputStream) {
+        lastHeartbeatAt[resolveKnownDeviceId(parts[1])] = System.currentTimeMillis()
+        val requestId = parts[2]
+        val result = AppInputResult(parts[3].toBoolean(), decodeProtocol(parts[4]))
+        inputWaiters.remove(requestId)?.complete(result)
+        inputCommands.entries.removeIf { it.value.requestId == requestId }
+        outStream.writeUTF("ACK")
+        outStream.flush()
+    }
+
+    /** 将 App 上报的 ADB 序列号归一到当前设备卡片正在使用的 transport 标识。 */
+    private fun resolveKnownDeviceId(reportedId: String): String {
+        val device = scanManager.state.value.devices.firstOrNull {
+            reportedId == it.id || reportedId == it.usbSerial || reportedId == it.physicalDeviceId
+        }
+        return device?.id ?: reportedId
+    }
+
+    /** 使用 URL-safe Base64 编码通信参数。 */
+    private fun encodeProtocol(value: String): String =
+        Base64.getUrlEncoder().withoutPadding().encodeToString(value.toByteArray())
+
+    /** 解码 URL-safe Base64 通信参数。 */
+    private fun decodeProtocol(value: String): String = runCatching {
+        String(Base64.getUrlDecoder().decode(value))
+    }.getOrDefault("")
+
+    /** 根据单步 waitMs 或 durationMs 计算 App 执行响应时限。 */
+    private fun inputTimeoutMs(payloadJson: String): Long = runCatching {
+        val payload = Json.parseToJsonElement(payloadJson).jsonObject
+        val step = payload.getValue("step").jsonObject
+        val type = step["type"]?.jsonPrimitive?.content.orEmpty()
+        val field = if (type == "wait") "waitMs" else "durationMs"
+        val operationMs = step[field]?.jsonPrimitive?.content?.toLongOrNull() ?: 0L
+        (operationMs + APP_INPUT_MARGIN_MS).coerceIn(APP_INPUT_MARGIN_MS, APP_INPUT_MAX_TIMEOUT_MS)
+    }.getOrDefault(APP_INPUT_MARGIN_MS)
 
     // =========================================================================
     // 心跳循环
@@ -318,6 +383,8 @@ class HeartbeatManager(
 
     private companion object {
         const val APP_WIFI_STATUS_TIMEOUT_MS = 5_000L
+        const val APP_INPUT_MARGIN_MS = 15_000L
+        const val APP_INPUT_MAX_TIMEOUT_MS = 620_000L
     }
 
     // =========================================================================
@@ -328,3 +395,6 @@ class HeartbeatManager(
         runCatching { scanManager.refreshNow(source) }
     }
 }
+
+/** 等待 App 拉取的一条辅助服务执行指令。 */
+private data class PendingInputCommand(val requestId: String, val encodedStep: String)

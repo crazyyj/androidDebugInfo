@@ -40,6 +40,7 @@ import androidx.compose.ui.window.rememberWindowState
 import com.newchar.debug.pc.config.DesktopAppSettingsStore
 import com.newchar.debug.pc.device.CameraServiceManager
 import com.newchar.debug.pc.device.DeviceInfo
+import com.newchar.debug.pc.config.isDirectStreamFallbackEnabled
 import com.newchar.debug.pc.device.stream.StreamKind
 import com.newchar.debug.pc.device.stream.StreamSessionCoordinator
 import com.newchar.debug.pc.device.stream.StreamSessionConfig
@@ -461,11 +462,11 @@ fun DevicePreviewWindow(
             directPort = streamPort,
             reversePort = reversePort,
             token = token,
-            allowDirectFallback = directHost.isNotBlank(),
+            allowDirectFallback = directHost.isNotBlank() && savedSettings.isDirectStreamFallbackEnabled(device),
         )
         val packageName = savedSettings.cameraAppPackage.ifBlank { "com.newchar.debug.sample" }
         val configured = streamServiceManager.configureStreamTransport(adbTarget, packageName, config)
-        if (!configured.success && directHost.isNotBlank()) {
+        if (!configured.success && config.allowDirectFallback) {
             errorText = "无法下发 App 断线续流配置：${configured.reason}"
             streamCoordinator.dispatch(appStreamKey, StreamTransportEvent.Failed(sessionId, errorText.orEmpty()))
             return@LaunchedEffect

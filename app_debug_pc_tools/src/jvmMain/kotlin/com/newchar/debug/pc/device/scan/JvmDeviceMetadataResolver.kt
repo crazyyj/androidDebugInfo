@@ -38,6 +38,7 @@ class JvmDeviceMetadataResolver : DeviceMetadataResolver {
         val deviceName = readProp(executor, device.id, "ro.product.device").ifBlank { device.device }
         val characteristics = readProp(executor, device.id, "ro.build.characteristics")
         val physicalDeviceId = readPhysicalDeviceId(executor, device.id)
+        publishAdbSerial(executor, device.id, resolveAdbSerial(device, physicalDeviceId))
         val wirelessIp = readWirelessIp(executor, device.id)
         val configuredWirelessPort = readWirelessPort(executor, device.id)
         val wirelessPort = if (device.isNetworkDevice) {
@@ -90,6 +91,22 @@ class JvmDeviceMetadataResolver : DeviceMetadataResolver {
     private suspend fun readPhysicalDeviceId(executor: CommandExecutor, serial: String): String {
         val primary = readProp(executor, serial, "ro.serialno")
         return primary.ifBlank { readProp(executor, serial, "ro.boot.serialno") }
+    }
+
+    /** 优先采用系统物理序列号；仅 USB ADB 未能读取属性时才采用 transport 序列号。 */
+    private fun resolveAdbSerial(device: DeviceInfo, physicalDeviceId: String): String {
+        if (physicalDeviceId.isNotBlank()) return physicalDeviceId
+        if (device.usbSerial.isNotBlank()) return device.usbSerial
+        return device.id.takeUnless { device.isNetworkDevice }.orEmpty()
+    }
+
+    /** 通过当前 ADB transport 把稳定序列号广播给集成调试库的 App。 */
+    private suspend fun publishAdbSerial(executor: CommandExecutor, target: String, adbSerial: String) {
+        if (adbSerial.isBlank()) return
+        executor.adb(
+            "-s", target, "shell", "am", "broadcast", "-a", APP_ADB_SERIAL_ACTION,
+            "--es", APP_ADB_SERIAL_EXTRA, adbSerial,
+        )
     }
 
     private suspend fun readWirelessPort(executor: CommandExecutor, serial: String): Int {
@@ -178,6 +195,8 @@ class JvmDeviceMetadataResolver : DeviceMetadataResolver {
 
     private companion object {
         const val CACHE_TTL_MS = 60_000L
+        const val APP_ADB_SERIAL_ACTION = "com.newchar.debug.action.STORE_ADB_SERIAL"
+        const val APP_ADB_SERIAL_EXTRA = "adb_serial"
         val ROUTE_SRC_REGEX = Regex("""src\s+((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})""")
         val IP_ADDR_REGEX = Regex("""inet\s+((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})""")
         val IFCONFIG_INET_ADDR_REGEX = Regex("""inet addr:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})""")

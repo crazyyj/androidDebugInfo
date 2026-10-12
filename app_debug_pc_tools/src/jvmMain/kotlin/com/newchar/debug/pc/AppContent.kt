@@ -127,6 +127,7 @@ import com.newchar.debug.pc.device.scan.WifiBanner
 import com.newchar.debug.pc.device.scan.WifiBannerDetail
 import com.newchar.debug.pc.device.files.DeviceFileBrowser
 import com.newchar.debug.pc.device.input.InputScriptPanel
+import com.newchar.debug.pc.device.input.BackendStepResult
 import com.newchar.debug.pc.device.preview.DeviceProbeCache
 import com.newchar.debug.pc.device.preview.DevicePreviewWindow
 import com.newchar.debug.pc.device.preview.InlineDevicePreview
@@ -933,6 +934,12 @@ fun AppContent(
                                         WifiStatus(status.enabled, status.ssid)
                                     }
                                 },
+                                onExecuteAccessibilityInput = { stepJson ->
+                                    heartbeatManager.requestAppInput(dev.id, stepJson).fold(
+                                        onSuccess = { BackendStepResult(it.success, "accessibility", it.message) },
+                                        onFailure = { BackendStepResult(false, "accessibility", it.message ?: "App 通信失败") },
+                                    )
+                                },
                                 onPreviewAlwaysOnTopChanged = { previewAlwaysOnTopSetting = it },
                                 probeCache = deviceProbeCache,
                                 scope = scope,
@@ -1590,6 +1597,9 @@ private fun DeviceDetailPanel(
     onRequestAppWifiStatus: suspend (DeviceInfo) -> Result<WifiStatus> = {
         Result.failure(IllegalStateException("App WiFi 状态请求不可用"))
     },
+    onExecuteAccessibilityInput: suspend (String) -> BackendStepResult = {
+        BackendStepResult(false, "accessibility", "App 通信不可用")
+    },
     onPreviewAlwaysOnTopChanged: (Boolean) -> Unit = {},
     probeCache: DeviceProbeCache = DeviceProbeCache(),
     scope: CoroutineScope,
@@ -1844,6 +1854,7 @@ private fun DeviceDetailPanel(
                     device = device,
                     executor = executor,
                     scope = scope,
+                    accessibilityExecutor = onExecuteAccessibilityInput,
                 )
                 // 屏幕预览（左）+ 相机预览（右），同一卡片内并排，互不干扰
                 InlineDevicePreview(

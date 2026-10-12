@@ -36,17 +36,20 @@ data class InputRunSnapshot(
     val currentStep: Int = 0,
     val totalSteps: Int = 0,
     val backend: String = "",
-    val message: String = "请选择 LQITS v1 脚本",
+    val message: String = "请选择 LQITS v1/v2 脚本",
     val screenshotPath: String? = null,
     val logs: List<String> = emptyList(),
 )
 
-/** 管理 agent 推送、脚本进程、控制命令、断连和 adb input 兜底。 */
+/** 管理脚本进程、控制命令及各级执行通道降级。 */
 class InputScriptSession(
     private val executor: AdbCommandExecutor,
     private val deviceId: String,
     private val scope: CoroutineScope,
     private val configDirectory: String = DesktopAppSettingsStore.configDirectoryPath(),
+    private val accessibilityExecutor: suspend (String) -> BackendStepResult = {
+        BackendStepResult(false, "accessibility", "辅助服务执行器未注册")
+    },
 ) {
     private val mutableSnapshot = MutableStateFlow(InputRunSnapshot())
     private val processReference = AtomicReference<Process?>(null)
@@ -54,6 +57,7 @@ class InputScriptSession(
     private var runJob: Job? = null
     @Volatile
     private var fallbackRunner: AdbInputFallbackRunner? = null
+    private var instrumentationRunner: UiautomatorInstrumentationRunner? = null
 
     /** 对 UI 暴露只读运行状态。 */
     val snapshot: StateFlow<InputRunSnapshot> = mutableSnapshot.asStateFlow()
@@ -66,13 +70,13 @@ class InputScriptSession(
         }
     }
 
-    /** 暂停 agent 或 adb input 兜底执行。 */
+    /** 暂停 agent 或后续通道执行。 */
     fun pause() {
         fallbackRunner?.pause() ?: sendCommand("PAUSE")
         updateState(InputRunState.PAUSED, "执行已暂停")
     }
 
-    /** 恢复 agent 或 adb input 兜底执行。 */
+    /** 恢复 agent 或后续通道执行。 */
     fun resume() {
         fallbackRunner?.resume() ?: sendCommand("RESUME")
         updateState(InputRunState.RUNNING, "继续执行")
@@ -93,31 +97,53 @@ class InputScriptSession(
         runJob = null
     }
 
-    /** 读取脚本、执行 agent，并仅在启动阶段失败时整体兜底。 */
+    /** 读取脚本并按执行环境优先级运行，任一环境失败都允许继续降级。 */
     private suspend fun executeFile(file: File) {
         val json = file.readText(Charsets.UTF_8)
         val script = parseInputScript(json)
+        val hasWaitState = script.steps.any { it.waitState != null }
+        val instrumentation = UiautomatorInstrumentationRunner(executor, deviceId)
+        instrumentationRunner = instrumentation
         mutableSnapshot.value = InputRunSnapshot(
             state = InputRunState.PREPARING,
             scriptName = script.name.ifBlank { file.nameWithoutExtension },
             totalSteps = script.steps.size,
             message = "正在准备输入 agent",
         )
+        val instrumentationStatus = instrumentation.prepare()
+        appendLog(if (instrumentationStatus.success) "UiAutomation instrumentation 已就绪" else
+            "UiAutomation instrumentation 准备失败，将继续其他通道：${instrumentationStatus.message}")
         try {
             executeAgent(json)
-            fallbackRemainingSteps(script)
+            if (hasWaitState) stopWaitStateFallback() else fallbackRemainingSteps(script)
         } catch (startup: AgentStartupException) {
             stopProcess()
-            appendLog("agent 启动失败，切换 adb input：${startup.message}")
-            executeFallback(script)
+            if (hasWaitState) {
+                stopWaitStateFallback(force = true)
+            } else {
+                appendLog("agent 启动失败，切换后续执行通道：${startup.message}")
+                executeFallback(script)
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (throwable: Throwable) {
             stopProcess()
             appendLog("agent 执行异常：${throwable.message ?: throwable::class.simpleName}")
-            updateState(InputRunState.FAILED, "agent 执行异常，准备兜底剩余步骤")
-            fallbackRemainingSteps(script)
+            if (hasWaitState) {
+                stopWaitStateFallback(force = true)
+            } else {
+                updateState(InputRunState.FAILED, "agent 执行异常，准备兜底剩余步骤")
+                fallbackRemainingSteps(script)
+            }
         }
+    }
+
+    /** 含条件等待时停止会进入 ADB 的 PC 端后续执行通道。 */
+    private fun stopWaitStateFallback(force: Boolean = false) {
+        if (!force && mutableSnapshot.value.state != InputRunState.FAILED) return
+        stopProcess()
+        appendLog("含 waitState 的脚本禁止 ADB fallback，已停止")
+        updateState(InputRunState.FAILED, "含 waitState 的脚本禁止 ADB fallback，已停止")
     }
 
     /** agent 中途失败时，仅从未确认完成的步骤开始兜底。 */
@@ -126,8 +152,8 @@ class InputScriptSession(
         if (snapshot.state != InputRunState.FAILED) return
         val offset = snapshot.currentStep.coerceIn(0, script.steps.size)
         if (offset >= script.steps.size) return
-        appendLog("agent 中断，从第 ${offset + 1} 步切换 adb input")
-        executeFallback(script.copy(steps = script.steps.drop(offset)), offset)
+        appendLog("agent 中断，从第 ${offset + 1} 步切换后续执行通道")
+        executeFallback(script, offset)
     }
 
     /** 推送 dex、启动 app_process 并进入状态读取循环。 */
@@ -155,9 +181,16 @@ class InputScriptSession(
             } catch (throwable: Throwable) {
                 throw AgentStartupException(throwable.message ?: "读取 agent 输出失败", throwable)
             } ?: throw AgentStartupException("agent 无启动输出")
+            if (line.startsWith("READY|")) {
+                appendLog(formatReadyLog(line))
+                return
+            }
+            if (line.startsWith("FATAL|")) {
+                val message = decode(line.substringAfter('|'))
+                appendLog("agent 启动失败：$message")
+                throw AgentStartupException(message)
+            }
             appendLog(line)
-            if (line.startsWith("READY|")) return
-            if (line.startsWith("FATAL|")) throw AgentStartupException(decode(line.substringAfter('|')))
         }
         throw AgentStartupException("agent 未返回 READY")
     }
@@ -184,15 +217,39 @@ class InputScriptSession(
 
     /** 解析 agent 的 STATUS、CONTROL 和 FATAL 行。 */
     private suspend fun handleAgentLine(line: String): Boolean {
-        appendLog(line)
         if (line.startsWith("STATUS|")) return handleStatusFields(line.split('|'))
-        if (line.startsWith("CONTROL|PAUSED")) updateState(InputRunState.PAUSED, "执行已暂停")
-        if (line.startsWith("CONTROL|RESUMED")) updateState(InputRunState.RUNNING, "继续执行")
+        if (line.startsWith("CONTROL|PAUSED")) {
+            appendLog("脚本已暂停")
+            updateState(InputRunState.PAUSED, "执行已暂停")
+            return false
+        }
+        if (line.startsWith("CONTROL|RESUMED")) {
+            appendLog("脚本继续执行")
+            updateState(InputRunState.RUNNING, "继续执行")
+            return false
+        }
+        if (line.startsWith("ACCESSIBILITY_REQUEST|")) return handleAccessibilityRequest(line)
         if (line.startsWith("FATAL|")) {
+            val message = decode(line.substringAfter('|'))
+            appendLog("执行失败：$message")
             captureFailureScreenshot()
-            updateState(InputRunState.FAILED, decode(line.substringAfter('|')))
+            updateState(InputRunState.FAILED, message)
             return true
         }
+        appendLog(line)
+        return false
+    }
+
+    /** 复用 App reverse 通道执行 agent 请求的最后一级辅助服务兜底。 */
+    private suspend fun handleAccessibilityRequest(line: String): Boolean {
+        val parts = line.split('|', limit = 4)
+        if (parts.size < 4) return false
+        val stepJson = decode(parts[2])
+        val previous = decode(parts[3])
+        appendLog("前三个通道执行失败，尝试辅助服务：$previous")
+        val result = accessibilityExecutor(stepJson)
+        sendCommand("ACCESSIBILITY_RESULT|${result.success}|${encode(result.message)}")
+        appendLog("辅助服务${if (result.success) "执行成功" else "执行失败"}：${result.message}")
         return false
     }
 
@@ -202,9 +259,10 @@ class InputScriptSession(
         val stateName = parts[2]
         val step = parts[3].toIntOrNull() ?: 0
         val total = parts[4].toIntOrNull() ?: mutableSnapshot.value.totalSteps
-        val backend = parts[5]
+        val backend = readableBackend(parts[5])
         val message = decode(parts[6])
         val state = stateForProtocol(stateName)
+        appendLog(formatStatusLog(stateName, step, total, backend, message))
         mutableSnapshot.value = mutableSnapshot.value.copy(
             state = state, currentStep = step, totalSteps = total,
             backend = backend, message = message,
@@ -213,29 +271,85 @@ class InputScriptSession(
         return state in terminalStates()
     }
 
-    /** 使用 PC 端 adb input 兜底执行脚本。 */
-    private suspend fun executeFallback(script: InputScriptDocument, stepOffset: Int = 0) {
-        updateBackendState("adb_input", InputRunState.RUNNING, "使用 adb input 兜底")
-        val runner = AdbInputFallbackRunner(executor, deviceId, script) { progress ->
-            handleFallbackProgress(progress, stepOffset)
+    /** 将 agent 状态协议转换为用户可读日志。 */
+    private fun formatStatusLog(state: String, step: Int, total: Int, backend: String, message: String): String {
+        val displayStep = if (state == "STEP_STARTED") step + 1 else step
+        val progress = if (state.startsWith("STEP_")) "[$displayStep/$total] " else ""
+        val backendText = if (backend.isBlank() || backend == "agent") "" else "（$backend）"
+        return "$progress${protocolStateLabel(state)}：$message$backendText"
+    }
+
+    /** 返回 agent 协议状态的中文显示名称。 */
+    private fun protocolStateLabel(state: String): String = when (state) {
+        "RUNNING" -> "开始执行"
+        "STEP_STARTED" -> "正在执行"
+        "STEP_OK" -> "执行成功"
+        "STEP_FAILED" -> "执行失败"
+        "COMPLETED" -> "执行完成"
+        "COMPLETED_WITH_ERRORS" -> "执行完成但存在失败"
+        "FAILED" -> "脚本失败"
+        "CANCELLED" -> "脚本已取消"
+        else -> state
+    }
+
+    /** 将设备端执行后端名称转换为中文显示文本。 */
+    private fun readableBackend(backend: String): String = when (backend) {
+        "agent" -> "设备端 agent"
+        "input_manager" -> "系统输入注入"
+        "adb_input" -> "ADB input"
+        "adb_input_approx" -> "ADB input 近似执行"
+        "shell" -> "设备命令"
+        "wait_state" -> "条件等待"
+        "wait_state_app_process" -> "app_process 条件等待"
+        "wait_state_adb" -> "ADB 条件等待"
+        "uiautomator" -> "UI 定位"
+        "uiautomator+input_manager" -> "UI 定位 + 系统输入注入"
+        "uiautomator+adb_input" -> "UI 定位 + ADB input"
+        "agent_exception" -> "agent 异常"
+        "accessibility" -> "辅助服务"
+        "all_backends" -> "全部执行通道"
+        else -> backend
+    }
+
+    /** 将 READY 协议转换为简短的设备端就绪信息。 */
+    private fun formatReadyLog(line: String): String {
+        val parts = line.split('|')
+        val api = parts.getOrNull(2)?.takeIf(String::isNotBlank)?.let { "，Android API $it" }.orEmpty()
+        val injection = when (parts.getOrNull(3)) {
+            "true" -> "，输入注入可用"
+            "false" -> "，输入注入不可用"
+            else -> ""
+        }
+        return "设备端输入 agent 已就绪$api$injection"
+    }
+
+    /** 使用 instrumentation、adb 和辅助服务依次兜底执行脚本。 */
+    private suspend fun executeFallback(script: InputScriptDocument, startIndex: Int = 0) {
+        updateBackendState("后续通道", InputRunState.RUNNING, "按优先级执行后续通道")
+        val runner = AdbInputFallbackRunner(
+            executor, deviceId, script, startIndex, instrumentationRunner, accessibilityExecutor,
+        ) { progress ->
+            handleFallbackProgress(progress)
         }
         fallbackRunner = runner
         val success = runner.run()
         fallbackRunner = null
         if (mutableSnapshot.value.state == InputRunState.CANCELLED) return
-        if (success) updateState(InputRunState.COMPLETED, "adb input 兜底执行完成")
-        else updateState(InputRunState.COMPLETED_WITH_ERRORS, "全部步骤已尝试，部分 adb input 执行失败")
+        if (success) updateState(InputRunState.COMPLETED, "后续通道执行完成")
+        else updateState(InputRunState.COMPLETED_WITH_ERRORS, "全部执行通道已尝试，部分步骤失败")
     }
 
     /** 将 adb input 步骤进度写入 UI，并在失败时截图。 */
-    private suspend fun handleFallbackProgress(progress: FallbackProgress, stepOffset: Int) {
+    private suspend fun handleFallbackProgress(progress: FallbackProgress) {
+        val step = progress.index
+        val total = mutableSnapshot.value.totalSteps
         mutableSnapshot.value = mutableSnapshot.value.copy(
             state = InputRunState.RUNNING,
-            currentStep = progress.index + stepOffset,
-            backend = "adb_input",
+            currentStep = step,
+            backend = readableBackend(progress.backend),
             message = progress.message,
         )
-        appendLog("${progress.state}|${progress.index}|${progress.message}")
+        appendLog(formatStatusLog(progress.state, step, total, readableBackend(progress.backend), progress.message))
         if (!progress.success) captureFailureScreenshot()
     }
 

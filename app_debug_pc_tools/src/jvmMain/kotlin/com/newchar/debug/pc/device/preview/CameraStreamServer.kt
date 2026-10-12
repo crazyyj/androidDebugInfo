@@ -43,7 +43,7 @@ internal class CameraStreamServer(private val preferredPort: Int = CAMERA_STREAM
         onConnected: () -> Unit = {},
         onRotationChanged: (Int) -> Unit = {},
         onTransportChanged: (StreamTransportKind) -> Unit = {},
-        onFrameReceived: () -> Unit = {},
+        onFrameReceived: (Int) -> Unit = {},
         onDisconnected: (StreamTransportKind) -> Unit = {},
     ) = withContext(Dispatchers.IO) {
         val server = serverSocket.get() ?: throw IllegalStateException("相机流服务尚未启动")
@@ -84,7 +84,7 @@ internal class CameraStreamServer(private val preferredPort: Int = CAMERA_STREAM
         onConnected: () -> Unit,
         onRotationChanged: (Int) -> Unit,
         onTransportChanged: (StreamTransportKind) -> Unit,
-        onFrameReceived: () -> Unit,
+        onFrameReceived: (Int) -> Unit,
     ): StreamTransportKind? {
         client.soTimeout = HELLO_TIMEOUT_MS
         DataInputStream(client.getInputStream()).use { source ->
@@ -121,7 +121,7 @@ internal class CameraStreamServer(private val preferredPort: Int = CAMERA_STREAM
         onFrame: (ImageBitmap) -> Unit,
         onError: (String) -> Unit,
         onRotationChanged: (Int) -> Unit,
-        onFrameReceived: () -> Unit,
+        onFrameReceived: (Int) -> Unit,
     ) {
         PipedOutputStream().use { output ->
             PipedInputStream(output, PIPE_BUFFER_SIZE).use { input ->
@@ -133,7 +133,7 @@ internal class CameraStreamServer(private val preferredPort: Int = CAMERA_STREAM
                         // 不可在上一帧末尾预读下一帧帧头，否则下一轮会把 pts 当作帧头导致流错位。
                         val frame = FirstFrame(source.readInt(), source.readInt(), true, first.transport)
                         val nextRotation = readAndWriteFrame(source, output, frame) ?: break
-                        onFrameReceived()
+                        onFrameReceived(frame.length)
                         if (nextRotation != rotation) {
                             rotation = nextRotation
                             onRotationChanged(rotation)

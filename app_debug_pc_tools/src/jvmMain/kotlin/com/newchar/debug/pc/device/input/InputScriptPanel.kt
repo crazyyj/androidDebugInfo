@@ -49,6 +49,7 @@ fun InputScriptPanel(
     device: DeviceInfo,
     executor: AdbCommandExecutor,
     scope: CoroutineScope,
+    accessibilityExecutor: suspend (String) -> BackendStepResult,
 ) {
     var showWindow by remember(device.id) { mutableStateOf(false) }
     PanelCard(modifier = Modifier.fillMaxWidth()) {
@@ -60,7 +61,7 @@ fun InputScriptPanel(
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 AppText("输入脚本", style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold))
                 AppText(
-                    "shell dex 执行，失败时使用 adb input 兜底",
+                    "app_process → uiautomator → adb → 辅助服务",
                     style = TextStyle(fontSize = 11.sp, color = AppTheme.textHint),
                 )
             }
@@ -68,7 +69,7 @@ fun InputScriptPanel(
         }
     }
     if (showWindow) {
-        InputScriptWindow(device, executor, scope) { showWindow = false }
+        InputScriptWindow(device, executor, scope, accessibilityExecutor) { showWindow = false }
     }
 }
 
@@ -78,9 +79,12 @@ private fun InputScriptWindow(
     device: DeviceInfo,
     executor: AdbCommandExecutor,
     scope: CoroutineScope,
+    accessibilityExecutor: suspend (String) -> BackendStepResult,
     onCloseRequest: () -> Unit,
 ) {
-    val session = remember(device.id, executor) { InputScriptSession(executor, device.adbTarget(), scope) }
+    val session = remember(device.id, executor, accessibilityExecutor) {
+        InputScriptSession(executor, device.adbTarget(), scope, accessibilityExecutor = accessibilityExecutor)
+    }
     val snapshot by session.snapshot.collectAsState()
     var selectedFile by remember(device.id) { mutableStateOf<File?>(null) }
     val windowState = rememberWindowState(width = 760.dp, height = 620.dp)
@@ -170,7 +174,7 @@ private fun ScriptControls(snapshot: InputRunSnapshot, file: File?, session: Inp
     }
 }
 
-/** 展示最近的 agent 协议与兜底执行日志。 */
+/** 展示最近的用户可读执行日志。 */
 @Composable
 private fun ScriptLog(snapshot: InputRunSnapshot, modifier: Modifier = Modifier) {
     val scrollState = rememberScrollState()

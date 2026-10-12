@@ -78,6 +78,8 @@ class DesktopAppSettingsStore {
         var previewAlwaysOnTop = true
         var cameraAppPackage = "com.newchar.debug.sample"
         var homeCompactMode = false
+        var enableDirectStreamFallback = false
+        val directStreamFallbackWhitelist = mutableListOf<String>()
         val pinnedPackagesByDevice = mutableMapOf<String, MutableList<String>>()
         trimmed.lineSequence()
             .map(String::trim)
@@ -95,6 +97,8 @@ class DesktopAppSettingsStore {
                     "previewAlwaysOnTop" -> previewAlwaysOnTop = value.toBooleanStrictOrNull() ?: true
                     "cameraAppPackage" -> if (value.isNotBlank()) cameraAppPackage = value
                     "homeCompactMode" -> homeCompactMode = value.toBooleanStrictOrNull() ?: false
+                    "enableDirectStreamFallback" -> enableDirectStreamFallback = value.toBooleanStrictOrNull() ?: false
+                    "directStreamFallbackDevice" -> if (value.isNotBlank()) directStreamFallbackWhitelist += value
                     "pinnedPackage" -> parsePinnedPackage(value)?.let { (deviceId, packageName) ->
                         pinnedPackagesByDevice.getOrPut(deviceId) { mutableListOf() } += packageName
                     }
@@ -107,6 +111,8 @@ class DesktopAppSettingsStore {
             cameraAppPackage = cameraAppPackage,
             homeCompactMode = homeCompactMode,
             pinnedPackagesByDevice = pinnedPackagesByDevice.mapValues { (_, packages) -> packages.distinct() },
+            enableDirectStreamFallback = enableDirectStreamFallback,
+            directStreamFallbackWhitelist = directStreamFallbackWhitelist.distinct(),
         )
     }
 
@@ -124,6 +130,19 @@ class DesktopAppSettingsStore {
             append("homeCompactMode=")
             append(settings.homeCompactMode)
             append('\n')
+            append("enableDirectStreamFallback=")
+            append(settings.enableDirectStreamFallback)
+            append('\n')
+            settings.directStreamFallbackWhitelist
+                .map(String::trim)
+                .filter(String::isNotBlank)
+                .distinct()
+                .sorted()
+                .forEach { device ->
+                    append("directStreamFallbackDevice=")
+                    append(device)
+                    append('\n')
+                }
             settings.pinnedPackagesByDevice.toSortedMap().forEach { (deviceId, packageNames) ->
                 packageNames.distinct().sorted().forEach { packageName ->
                     append("pinnedPackage=")

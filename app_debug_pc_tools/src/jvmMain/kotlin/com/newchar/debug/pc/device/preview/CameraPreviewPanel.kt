@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.newchar.debug.pc.config.DesktopAppSettingsStore
+import com.newchar.debug.pc.config.isDirectStreamFallbackEnabled
 import com.newchar.debug.pc.device.CameraServiceManager
 import com.newchar.debug.pc.device.DeviceInfo
 import com.newchar.debug.pc.device.stream.StreamKind
@@ -60,6 +61,54 @@ import java.util.UUID
 
 /** am 已成功但迟迟收不到首帧的超时时间，超过则提示检查相机权限。 */
 private const val FIRST_FRAME_TIMEOUT_MS = 20_000L
+private const val CAMERA_METRICS_WINDOW_MS = 1_000L
+
+/** 相机解码画面的实际尺寸与最近一秒接收指标。 */
+private data class CameraPreviewMetrics(
+    val width: Int = 0,
+    val height: Int = 0,
+    val fps: Int = 0,
+    val bitRateKbps: Int = 0,
+)
+
+/** 以接收到的编码帧数据计算相机预览的实际帧率和码率。 */
+private class CameraPreviewMetricsAccumulator {
+    private var windowStartedAt = 0L
+    private var frameCount = 0
+    private var byteCount = 0L
+    private var metrics = CameraPreviewMetrics()
+
+    /** 记录解码后画面的实际尺寸。 */
+    fun recordDecodedFrame(width: Int, height: Int): CameraPreviewMetrics {
+        metrics = metrics.copy(width = width, height = height)
+        return metrics
+    }
+
+    /** 记录一帧编码数据；满一秒时返回最新统计结果。 */
+    fun recordEncodedFrame(bytes: Int, now: Long = System.currentTimeMillis()): CameraPreviewMetrics? {
+        if (windowStartedAt == 0L) windowStartedAt = now
+        frameCount++
+        byteCount += bytes
+        val elapsed = now - windowStartedAt
+        if (elapsed < CAMERA_METRICS_WINDOW_MS) return null
+        metrics = metrics.copy(
+            fps = (frameCount * 1_000L / elapsed).toInt(),
+            bitRateKbps = (byteCount * 8L / elapsed).toInt(),
+        )
+        windowStartedAt = now
+        frameCount = 0
+        byteCount = 0L
+        return metrics
+    }
+
+    /** 清空上一轮流会话的统计结果。 */
+    fun reset() {
+        windowStartedAt = 0L
+        frameCount = 0
+        byteCount = 0L
+        metrics = CameraPreviewMetrics()
+    }
+}
 
 /** 相机面板状态机。 */
 internal sealed class CameraPanelState {
@@ -85,6 +134,12 @@ private fun cameraStatusText(state: CameraPanelState): String = when (state) {
     is CameraPanelState.Error -> "出错"
 }
 
+/** 将当前相机预览的实际尺寸、帧率与码率格式化为状态栏文字。 */
+private fun cameraMetricsText(metrics: CameraPreviewMetrics): String {
+    if (metrics.width <= 0 || metrics.height <= 0) return ""
+    return "${metrics.width}×${metrics.height} · ${metrics.fps}fps · ${metrics.bitRateKbps}kbps"
+}
+
 /**
  * 与屏幕预览左右并排的相机面板。
  *
@@ -106,6 +161,7 @@ internal fun CameraPreviewPanel(
     // 否则 USB 断开后的局域网直连没有可接管的监听端。
     val previewOwnerKey = remember { device.physicalDeviceKey() }
     val directStreamHost = JvmWifiDetector.wifiIp.orEmpty()
+    val allowDirectFallback = settingsStore.loadSync().isDirectStreamFallbackEnabled(device)
     var cameraState by remember(previewOwnerKey) { mutableStateOf<CameraPanelState>(CameraPanelState.Idle) }
     var currentFrame by remember(previewOwnerKey) { mutableStateOf<ImageBitmap?>(null) }
     var installedPackage by remember(previewOwnerKey) { mutableStateOf<String?>(null) }
@@ -115,6 +171,8 @@ internal fun CameraPreviewPanel(
     var streamSession by remember(previewOwnerKey) { mutableStateOf(0) }
     var photoPath by remember(previewOwnerKey) { mutableStateOf<String?>(null) }
     var previewRotation by remember(previewOwnerKey) { mutableStateOf(0) }
+    var cameraMetrics by remember(previewOwnerKey) { mutableStateOf(CameraPreviewMetrics()) }
+    val metricsAccumulator = remember(previewOwnerKey) { CameraPreviewMetricsAccumulator() }
 
     val cameraServiceManager = remember(executor) { CameraServiceManager(executor) }
     val cameraStreamServer = remember(previewOwnerKey) { CameraStreamServer() }
@@ -134,6 +192,8 @@ internal fun CameraPreviewPanel(
         currentFrame = null
         photoPath = null
         previewRotation = 0
+        metricsAccumulator.reset()
+        cameraMetrics = CameraPreviewMetrics()
         switchingCamera = false
         capturing = false
         scope.launch {
@@ -166,6 +226,8 @@ internal fun CameraPreviewPanel(
         cameraState = CameraPanelState.Connecting
         currentFrame = null
         previewRotation = 0
+        metricsAccumulator.reset()
+        cameraMetrics = CameraPreviewMetrics()
         // 关闭上一次（可能失败的）尝试遗留的流服务器，避免端口被自身占用导致「端口占用」
         runCatching { cameraStreamServer.close() }
         // 1) 先在本机绑定并监听 6668，确保设备连接时本机已在等待
@@ -191,6 +253,7 @@ internal fun CameraPreviewPanel(
                         scope.launch frameUpdate@{
                             if (stoppingCamera || session != streamSession) return@frameUpdate
                             currentFrame = frame
+                            cameraMetrics = metricsAccumulator.recordDecodedFrame(frame.width, frame.height)
                             if (cameraState !is CameraPanelState.Streaming) {
                                 cameraState = CameraPanelState.Streaming
                             }
@@ -218,8 +281,13 @@ internal fun CameraPreviewPanel(
                     onTransportChanged = { transport ->
                         streamCoordinator.dispatch(streamKey, StreamTransportEvent.FirstFrame(sessionId, transport, directStreamHost))
                     },
-                    onFrameReceived = {
+                    onFrameReceived = { bytes ->
                         streamCoordinator.dispatch(streamKey, StreamTransportEvent.FrameReceived(sessionId))
+                        scope.launch {
+                            if (!stoppingCamera && session == streamSession) {
+                                metricsAccumulator.recordEncodedFrame(bytes)?.let { cameraMetrics = it }
+                            }
+                        }
                     },
                     onDisconnected = { transport ->
                         streamCoordinator.dispatch(streamKey, StreamTransportEvent.SocketLost(sessionId, transport))
@@ -244,10 +312,10 @@ internal fun CameraPreviewPanel(
             directPort = streamPort,
             reversePort = reversePort,
             token = token,
-            allowDirectFallback = directStreamHost.isNotBlank(),
+            allowDirectFallback = directStreamHost.isNotBlank() && allowDirectFallback,
         )
         val configured = cameraServiceManager.configureStreamTransport(adbTarget, pkg, transportConfig)
-        if (!configured.success && directStreamHost.isNotBlank()) {
+        if (!configured.success && transportConfig.allowDirectFallback) {
             cameraState = CameraPanelState.Error("无法下发相机断线续流配置：${configured.reason}")
             streamCoordinator.dispatch(streamKey, StreamTransportEvent.Failed(sessionId, configured.reason))
             return
@@ -319,7 +387,11 @@ internal fun CameraPreviewPanel(
             )
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 AppText(
-                    "${cameraStatusText(cameraState)} · ${streamTransportLabel(transportState)}",
+                    listOf(
+                        cameraStatusText(cameraState),
+                        streamTransportLabel(transportState),
+                        cameraMetricsText(cameraMetrics),
+                    ).filter(String::isNotBlank).joinToString(" · "),
                     style = TextStyle(fontSize = 11.sp, color = AppTheme.textSecondary),
                     maxLines = 1,
                 )
@@ -373,6 +445,8 @@ internal fun CameraPreviewPanel(
                                 if (result.first) {
                                     currentFrame = null
                                     previewRotation = 0
+                                    metricsAccumulator.reset()
+                                    cameraMetrics = CameraPreviewMetrics()
                                     cameraState = CameraPanelState.Connecting
                                 } else {
                                     cameraState = CameraPanelState.Error("切换摄像头失败：${result.second}")
