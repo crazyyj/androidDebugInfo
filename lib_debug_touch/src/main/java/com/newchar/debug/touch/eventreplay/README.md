@@ -73,22 +73,20 @@ ActionStream stream = EventReplayManager.loadActionStream(externalJson);
 
 ---
 
-## 验证（纯 JVM，无需 Android）
+## 验证（纯 JVM 单测，无需 Android）
 
-`tools/JvmRoundTrip.java` 在普通 JVM 上验证了“JSON 化 + 新代码可处理”：
+由 `src/test/java/com/newchar/debug/touch/eventreplay/JvmRoundTripTest.java` 以 JUnit 单测验证
+“JSON 化 + 新代码可处理”：
 
 ```bash
-mkdir -p /tmp/jvmout
-javac -d /tmp/jvmout \
-  lib_debug_touch/src/main/java/com/newchar/debug/touch/eventreplay/model/*.java \
-  lib_debug_touch/src/main/java/com/newchar/debug/touch/eventreplay/replay/Action*.java \
-  lib_debug_touch/src/main/java/com/newchar/debug/touch/eventreplay/replay/TouchToActionConverter.java \
-  lib_debug_touch/tools/JvmRoundTrip.java
-java -cp /tmp/jvmout com.newchar.debug.touch.eventreplay.JvmRoundTrip
+./gradlew :lib_debug_touch:testDebugUnitTest
 ```
 
-它会生成两个示例 JSON（位于 `lib_debug_touch/eventreplay/sample/`）：
+两个示例 JSON 作为测试夹具（fixture）随工程维护，位于
+`src/test/resources/eventreplay/sample/`：
+
 - `recorded_event_sample.json` —— 形式一的事件序列
 - `action_stream_sample.json` —— 形式二的动作流（由前者转换而来）
 
-两者均能被对应 `fromJsonString` 重新解析，证明 **“保存下来的 event 已经 JSON 化、可由新代码处理”**。
+单测会重新构造并序列化同结构的序列完成往返校验，同时回读上述夹具文件，
+证明 **“保存下来的 event 已经 JSON 化、可由新代码处理”**。
