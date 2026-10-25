@@ -32,6 +32,11 @@
             android:label="Color Fragments" />
 
         <activity
+            android:name=".PdfPreviewActivity"
+            android:exported="true"
+            android:label="PDF Preview" />
+
+        <activity
             android:name=".AppCompatDialogPopupDemoActivity"
             android:exported="false"
             android:label="AppCompat Dialog Popup Demo" />
