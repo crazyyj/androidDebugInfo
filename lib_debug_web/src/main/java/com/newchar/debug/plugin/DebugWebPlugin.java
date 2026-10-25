@@ -13,12 +13,17 @@ import android.widget.TextView;
 import com.newchar.debug.api.PluginContext;
 import com.newchar.debug.api.ScreenDisplayPlugin;
 import com.newchar.debug.browser.WebViewFactory;
+import com.newchar.debug.browser.pdf.PdfPickerActivity;
+import com.newchar.debug.browser.pdf.PdfViewer;
 import com.newchar.debug.browser.session.WebSessionStrategy;
+
+import java.io.File;
 
 public class DebugWebPlugin extends ScreenDisplayPlugin {
 
     public static final String ID = "debug_web";
-    private static final String DEFAULT_URL = "https://www.baidu.com";
+    /** 首屏默认加载的 PDF，用于验证 pdf.js 预览链路；改回普通网址只需替换此值。 */
+    private static final String DEFAULT_URL = "https://test-phl-collection-app.infra.fan/12055.pdf";
 
     private String mSessionId = "debug_web";
     private boolean mCreationPending;
@@ -50,6 +55,7 @@ public class DebugWebPlugin extends ScreenDisplayPlugin {
         mRootView = root;
         mSessionUnavailable = false;
         mSessionId = "debug_web";
+        installPdfSupport(context);
         root.addView(createToolbar(context));
         pluginContainerView.addView(root);
         root.setVisibility(View.GONE);
@@ -80,7 +86,46 @@ public class DebugWebPlugin extends ScreenDisplayPlugin {
         toolbar.addView(mSessionMode);
         toolbar.addView(createGoButton(context));
         toolbar.addView(createRefreshButton(context));
+        toolbar.addView(createPdfButton(context));
         return toolbar;
+    }
+
+    /**
+     * 注册 PDF 预览能力：初始化仓库、挂到工厂拦截器、接收回写结果。
+     */
+    private void installPdfSupport(Context context) {
+        PdfViewer viewer = PdfViewer.getInstance();
+        viewer.init(context);
+        viewer.setListener(new PdfViewer.Listener() {
+            /** 页面回写成功后提示实际落盘文件名。 */
+            @Override
+            public void onPdfSaved(WebView view, File file) {
+                android.widget.Toast.makeText(view.getContext(),
+                        "已保存：" + file.getName(), android.widget.Toast.LENGTH_SHORT).show();
+            }
+        });
+        WebViewFactory.getInstance().setPageInterceptor(viewer);
+    }
+
+    /**
+     * 创建 PDF 选择按钮，选择结果由透明 Activity 直接交给当前实例。
+     */
+    private View createPdfButton(Context context) {
+        android.widget.Button btn = new android.widget.Button(context);
+        btn.setText("PDF");
+        btn.setTextSize(12f);
+        btn.setPadding(dp(context, 12), dp(context, 4), dp(context, 12), dp(context, 4));
+        btn.setOnClickListener(v -> {
+            if (mWebView == null) {
+                android.widget.Toast.makeText(v.getContext(), "浏览器尚未就绪",
+                        android.widget.Toast.LENGTH_SHORT).show();
+                return;
+            }
+            PdfPickerActivity.start(v.getContext(), mWebView);
+        });
+        btn.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return btn;
     }
 
     /** 恢复使用返回的真实 sessionId，渲染进程退出后仍指向同一账号。 */
@@ -132,7 +177,56 @@ public class DebugWebPlugin extends ScreenDisplayPlugin {
         boolean probing = com.newchar.debug.browser.store.WebResourceMetadataObserver.isProbeEnabled();
         mSessionMode.setText(mode + (probing ? "" : " · 资源探测未启用"));
         String url = mUrlInput.getText().toString().trim();
-        view.loadUrl(url.isEmpty() ? DEFAULT_URL : url);
+        loadInto(view, url.isEmpty() ? DEFAULT_URL : url);
+    }
+
+    /**
+     * 按后缀分发：PDF 交给 pdf.js 容器，其余交给内核。
+     *
+     * @param view 目标实例
+     * @param url  已补全协议的地址
+     */
+    private void loadInto(WebView view, String url) {
+        if (view == null || url == null || url.isEmpty()) {
+            return;
+        }
+        if (!isPdf(url)) {
+            view.loadUrl(url);
+            return;
+        }
+        PdfViewer.getInstance().open(view, url, new PdfViewer.Callback() {
+            /** 页面已发起加载，渲染进度由 viewer 自己显示。 */
+            @Override
+            public void onOpened() {
+            }
+
+            /** 下载或握手失败时明确提示，避免留在空白页。 */
+            @Override
+            public void onError(Exception error) {
+                android.widget.Toast.makeText(view.getContext(),
+                        "PDF 加载失败：" + error.getMessage(),
+                        android.widget.Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    /**
+     * 只按路径后缀判断，忽略 query 与 fragment。
+     *
+     * @param url 完整地址
+     * @return 以 .pdf 结尾时为 true
+     */
+    private boolean isPdf(String url) {
+        String value = url.toLowerCase(java.util.Locale.US);
+        int query = value.indexOf('?');
+        if (query >= 0) {
+            value = value.substring(0, query);
+        }
+        int fragment = value.indexOf('#');
+        if (fragment >= 0) {
+            value = value.substring(0, fragment);
+        }
+        return value.endsWith(".pdf");
     }
 
     /** 将工具栏尺寸转换为 dp，适配设备密度。 */
@@ -181,7 +275,7 @@ public class DebugWebPlugin extends ScreenDisplayPlugin {
             url = "https://" + url;
             mUrlInput.setText(url);
         }
-        mWebView.loadUrl(url);
+        loadInto(mWebView, url);
     }
 
     /** 显示页面，失效实例按原会话重建。 */
