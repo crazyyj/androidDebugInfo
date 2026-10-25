@@ -26,6 +26,9 @@ public class SimpleWebChrome extends WebChromeClient {
 
     @Override
     public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
+        // 页面脚本异常是 PDF 预览失败的主要线索，必须落到 logcat。
+        android.util.Log.d("DebugWebConsole", consoleMessage.message()
+                + " @" + consoleMessage.sourceId() + ":" + consoleMessage.lineNumber());
         return true;
     }
 
