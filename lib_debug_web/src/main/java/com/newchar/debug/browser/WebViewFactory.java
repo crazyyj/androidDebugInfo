@@ -35,6 +35,7 @@ public final class WebViewFactory {
     private final List<Runnable> initWaiters = new ArrayList<>();
     private final WebSessionRegistry registry = new WebSessionRegistry();
     private volatile WebSessionStrategy strategy;
+    private volatile PageInterceptor pageInterceptor;
     private Context appContext;
     private boolean initializing;
     private boolean initialized;
@@ -44,6 +45,19 @@ public final class WebViewFactory {
 
     /** 返回共享工厂；Profile 不会被跨会话复用。 */
     public static WebViewFactory getInstance() { return Holder.INSTANCE; }
+
+    /**
+     * 注册页面拦截器，建议在创建实例之前调用。
+     *
+     * <p>工厂只做转交，不感知具体业务；新实例装配完成后会回调
+     * {@link PageInterceptor#onViewReady(WebView)}，销毁前回调
+     * {@link PageInterceptor#onViewReleased(WebView)}。</p>
+     *
+     * @param interceptor 拦截器，null 表示关闭
+     */
+    public void setPageInterceptor(PageInterceptor interceptor) {
+        pageInterceptor = interceptor;
+    }
 
     /** 延迟构造工厂。 */
     private static class Holder { private static final WebViewFactory INSTANCE = new WebViewFactory(); }
@@ -239,9 +253,14 @@ public final class WebViewFactory {
             }
             new WebSettingsBuilder(view.getSettings()).buildDefault();
             WebResourceMetadataObserver.Page page = new WebResourceMetadataObserver.Page();
+            PageInterceptor interceptor = pageInterceptor;
             view.setWebViewClient(new SimpleWebClient(session, selected, context, page,
-                    view.getSettings().getUserAgentString(), affected -> rendererGone(affected)));
+                    view.getSettings().getUserAgentString(), affected -> rendererGone(affected),
+                    interceptor));
             view.setWebChromeClient(new SimpleWebChrome(session));
+            if (interceptor != null) {
+                interceptor.onViewReady(view);
+            }
             managedViews.put(view, new ManagedView(session, page, callback));
             return view;
         } catch (RuntimeException error) { view.destroy(); throw error; }
@@ -274,6 +293,13 @@ public final class WebViewFactory {
         ManagedView managed = managedViews.remove(view);
         if (managed == null) return;
         WebResourceMetadataObserver.cancelPage(managed.page);
+        PageInterceptor interceptor = pageInterceptor;
+        if (interceptor != null) {
+            try {
+                interceptor.onViewReleased(view);
+            } catch (RuntimeException ignored) {
+            }
+        }
         if (!rendererGone) view.stopLoading();
         if (view.getParent() instanceof ViewGroup) ((ViewGroup) view.getParent()).removeView(view);
         view.destroy();

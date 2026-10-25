@@ -24,6 +24,12 @@ public class WebSettingsBuilder {
         webSettings.setLoadWithOverviewMode(true);
         webSettings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         webSettings.setRenderPriority(WebSettings.RenderPriority.HIGH);
+
+        // 本地资源统一走拦截器，不向页面开放 file/content 访问。
+        webSettings.setAllowFileAccess(false);
+        webSettings.setAllowContentAccess(false);
+        // 固定字体缩放，避免系统字号放大破坏 pdf.js 文本层的像素定位。
+        webSettings.setTextZoom(100);
     }
 
     /**

@@ -5,6 +5,7 @@ import android.net.Uri;
 import android.net.http.SslError;
 import android.webkit.SslErrorHandler;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.RenderProcessGoneDetail;
@@ -18,7 +19,10 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * 只观察允许的静态资源，不替换 WebView 自身的响应。
+ * 观察允许的静态资源，并按需把请求转交给 {@link PageInterceptor}。
+ *
+ * <p>没有拦截器时行为不变：始终让内核处理原始请求，只做旁路采集。
+ * 拦截器只在自身命名空间内返回响应，其余请求继续返回 null。</p>
  */
 public class SimpleWebClient extends WebViewClient {
 
@@ -28,6 +32,7 @@ public class SimpleWebClient extends WebViewClient {
     private final CookieManager cookieManager;
     private final WebResourceMetadataObserver.Page page;
     private final RenderExitHandler renderExitHandler;
+    private final PageInterceptor interceptor;
     private volatile String pageUrl;
     private final String userAgent;
 
@@ -43,12 +48,19 @@ public class SimpleWebClient extends WebViewClient {
      */
     public SimpleWebClient(WebSessionStrategy.Session session, WebSessionStrategy strategy,
                            Context context) {
-        this(session, strategy, context, new WebResourceMetadataObserver.Page(), "", null);
+        this(session, strategy, context, new WebResourceMetadataObserver.Page(), "", null, null);
+    }
+
+    /** 兼容不含拦截器的旧入口。 */
+    public SimpleWebClient(WebSessionStrategy.Session session, WebSessionStrategy strategy,
+                           Context context, WebResourceMetadataObserver.Page page, String userAgent, RenderExitHandler handler) {
+        this(session, strategy, context, page, userAgent, handler, null);
     }
 
     /** 在主线程固定 Cookie 管理器和 UA，后台不访问 WebView 的 UI API。 */
     public SimpleWebClient(WebSessionStrategy.Session session, WebSessionStrategy strategy,
-                           Context context, WebResourceMetadataObserver.Page page, String userAgent, RenderExitHandler handler) {
+                           Context context, WebResourceMetadataObserver.Page page, String userAgent,
+                           RenderExitHandler handler, PageInterceptor interceptor) {
         this.session = session;
         this.strategy = strategy;
         this.appContext = context == null ? null : context.getApplicationContext();
@@ -56,6 +68,7 @@ public class SimpleWebClient extends WebViewClient {
         this.page = page;
         this.userAgent = userAgent;
         this.renderExitHandler = handler;
+        this.interceptor = interceptor;
     }
 
     /** 主线程保存顶层来源，拦截工作线程只读取快照。 */
@@ -95,11 +108,17 @@ public class SimpleWebClient extends WebViewClient {
     }
 
     /**
-     * 快照并异步投递候选静态资源，始终让内核继续处理原始请求。
+     * 先让拦截器接管自身命名空间，再对剩余静态资源做旁路采集。
      */
     @Override
     public android.webkit.WebResourceResponse shouldInterceptRequest(
             WebView view, WebResourceRequest request) {
+        if (interceptor != null && request != null) {
+            WebResourceResponse intercepted = interceptor.intercept(request);
+            if (intercepted != null) {
+                return intercepted;
+            }
+        }
         if (session != null && session.isActive() && strategy != null && appContext != null
                 && request != null && !request.isForMainFrame()
                 && "GET".equalsIgnoreCase(request.getMethod()) && isCandidate(request.getUrl())) {
