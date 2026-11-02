@@ -56,6 +56,8 @@ public class DebugView extends LinearLayout {
     // PC reverse 通道状态 - 显示在顶部功能区
     private TextView mPcStatusView;
     private static final int VIEW_ID_PC_STATUS = View.generateViewId();
+    private TextView mWebMediaStatusView;
+    private static final int VIEW_ID_WEB_MEDIA_STATUS = View.generateViewId();
     private boolean mAttached;
     private final PcConnectionChecker.Listener mPcStatusListener = connected -> updatePcStatus();
 
@@ -114,6 +116,7 @@ public class DebugView extends LinearLayout {
 
         // PC reverse 通道状态 - 显示在最左侧
         initPcStatusView(context);
+        initWebMediaStatusView(context);
 
         initCopyView(context);
         initFoldView(context);
@@ -121,6 +124,7 @@ public class DebugView extends LinearLayout {
         initSwitchModeView(context);
 
         titleController.addView(mPcStatusView);
+        titleController.addView(mWebMediaStatusView);
         titleController.addView(mCopyView);
         titleController.addView(mFoldView);
         titleController.addView(mClearView);
@@ -187,6 +191,49 @@ public class DebugView extends LinearLayout {
                     ? "PC 已连接 (127.0.0.1:6666)" : "PC 未连接",
                     Toast.LENGTH_SHORT).show();
         });
+    }
+
+    /**
+     * 初始化网页录音和拍摄状态文本，默认不占用顶部功能区。
+     */
+    private void initWebMediaStatusView(Context context) {
+        mWebMediaStatusView = genTextView(context, VIEW_ID_WEB_MEDIA_STATUS);
+        mWebMediaStatusView.setTextSize(12);
+        mWebMediaStatusView.setTextColor(Color.parseColor("#D32F2F"));
+        mWebMediaStatusView.setVisibility(GONE);
+    }
+
+    /**
+     * 更新顶部网页媒体采集状态；非 UI 线程调用时会切回该视图的消息队列。
+     *
+     * @param audioCapturing 是否正在录音
+     * @param videoCapturing 是否正在拍摄
+     */
+    public void updateWebMediaCaptureStatus(boolean audioCapturing, boolean videoCapturing) {
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+            post(() -> updateWebMediaCaptureStatus(audioCapturing, videoCapturing));
+            return;
+        }
+        if (mWebMediaStatusView == null) {
+            return;
+        }
+        String status = buildWebMediaCaptureStatus(audioCapturing, videoCapturing);
+        mWebMediaStatusView.setText(status);
+        mWebMediaStatusView.setVisibility(status.isEmpty() ? GONE : VISIBLE);
+    }
+
+    /**
+     * 根据当前获准的媒体类型生成顶部状态文本。
+     *
+     * @param audioCapturing 是否正在录音
+     * @param videoCapturing 是否正在拍摄
+     * @return 顶部展示的媒体采集状态
+     */
+    private String buildWebMediaCaptureStatus(boolean audioCapturing, boolean videoCapturing) {
+        if (audioCapturing && videoCapturing) {
+            return "录音/拍摄中";
+        }
+        return audioCapturing ? "录音中" : videoCapturing ? "拍摄中" : "";
     }
 
     /**
@@ -383,7 +430,6 @@ public class DebugView extends LinearLayout {
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         mAttached = true;
-        DebugViewStore.attach(this);
         try {
             mPluginContext.mApp = getContext().getApplicationContext();
             generateTitleController();
@@ -391,6 +437,7 @@ public class DebugView extends LinearLayout {
         } catch (Exception e) {
             e.printStackTrace();
         }
+        DebugViewStore.attach(this);
         registerFocusChangeListener();
         loadPlugin();
         startPcStatusChecker();

@@ -33,6 +33,7 @@ public class SimpleWebClient extends WebViewClient {
     private final WebResourceMetadataObserver.Page page;
     private final RenderExitHandler renderExitHandler;
     private final PageInterceptor interceptor;
+    private final Runnable pageStartHandler;
     private volatile String pageUrl;
     private final String userAgent;
 
@@ -54,13 +55,20 @@ public class SimpleWebClient extends WebViewClient {
     /** 兼容不含拦截器的旧入口。 */
     public SimpleWebClient(WebSessionStrategy.Session session, WebSessionStrategy strategy,
                            Context context, WebResourceMetadataObserver.Page page, String userAgent, RenderExitHandler handler) {
-        this(session, strategy, context, page, userAgent, handler, null);
+        this(session, strategy, context, page, userAgent, handler, null, null);
     }
 
     /** 在主线程固定 Cookie 管理器和 UA，后台不访问 WebView 的 UI API。 */
     public SimpleWebClient(WebSessionStrategy.Session session, WebSessionStrategy strategy,
                            Context context, WebResourceMetadataObserver.Page page, String userAgent,
                            RenderExitHandler handler, PageInterceptor interceptor) {
+        this(session, strategy, context, page, userAgent, handler, interceptor, null);
+    }
+
+    /** 在主线程固定 Cookie 管理器、UA 和顶层页面开始回调。 */
+    public SimpleWebClient(WebSessionStrategy.Session session, WebSessionStrategy strategy,
+                           Context context, WebResourceMetadataObserver.Page page, String userAgent,
+                           RenderExitHandler handler, PageInterceptor interceptor, Runnable pageStartHandler) {
         this.session = session;
         this.strategy = strategy;
         this.appContext = context == null ? null : context.getApplicationContext();
@@ -69,12 +77,16 @@ public class SimpleWebClient extends WebViewClient {
         this.userAgent = userAgent;
         this.renderExitHandler = handler;
         this.interceptor = interceptor;
+        this.pageStartHandler = pageStartHandler;
     }
 
     /** 主线程保存顶层来源，拦截工作线程只读取快照。 */
     @Override
     public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
         pageUrl = url;
+        if (pageStartHandler != null) {
+            pageStartHandler.run();
+        }
         super.onPageStarted(view, url, favicon);
     }
 

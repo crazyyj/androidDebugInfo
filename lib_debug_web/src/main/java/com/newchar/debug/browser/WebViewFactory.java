@@ -8,6 +8,7 @@ import android.view.ViewGroup;
 import android.webkit.WebView;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
+import com.newchar.debug.browser.permission.WebMediaCaptureBridge;
 import com.newchar.debug.browser.session.DefaultWebSessionStrategy;
 import com.newchar.debug.browser.session.ProfileWebSessionStrategy;
 import com.newchar.debug.browser.session.WebSessionRegistry;
@@ -246,6 +247,7 @@ public final class WebViewFactory {
     private WebView createBoundWebView(Context context, WebSessionStrategy.Session session,
                                        WebSessionStrategy selected, WebViewCallback callback) {
         WebView view = new WebView(new MutableContextWrapper(context));
+        WebMediaCaptureBridge mediaCaptureBridge = null;
         try {
             selected.bindBeforeInitialization(view, session);
             if (session.profileMode && !session.namespace.equals(WebViewCompat.getProfile(view).getName())) {
@@ -254,16 +256,25 @@ public final class WebViewFactory {
             new WebSettingsBuilder(view.getSettings()).buildDefault();
             WebResourceMetadataObserver.Page page = new WebResourceMetadataObserver.Page();
             PageInterceptor interceptor = pageInterceptor;
+            SimpleWebChrome chrome = new SimpleWebChrome(session, context);
+            mediaCaptureBridge = WebMediaCaptureBridge.install(view,
+                    chrome::reportMediaCaptureState);
             view.setWebViewClient(new SimpleWebClient(session, selected, context, page,
                     view.getSettings().getUserAgentString(), affected -> rendererGone(affected),
-                    interceptor));
-            view.setWebChromeClient(new SimpleWebChrome(session));
+                    interceptor, chrome::clearMediaCaptureStatus));
+            view.setWebChromeClient(chrome);
             if (interceptor != null) {
                 interceptor.onViewReady(view);
             }
-            managedViews.put(view, new ManagedView(session, page, callback));
+            managedViews.put(view, new ManagedView(session, page, chrome, mediaCaptureBridge, callback));
             return view;
-        } catch (RuntimeException error) { view.destroy(); throw error; }
+        } catch (RuntimeException error) {
+            if (mediaCaptureBridge != null) {
+                mediaCaptureBridge.release();
+            }
+            view.destroy();
+            throw error;
+        }
     }
 
     /** 只对确切不支持异常降级，磁盘及其他运行异常不能误清登录环境。 */
@@ -293,6 +304,8 @@ public final class WebViewFactory {
         ManagedView managed = managedViews.remove(view);
         if (managed == null) return;
         WebResourceMetadataObserver.cancelPage(managed.page);
+        managed.mediaCaptureBridge.release();
+        managed.chrome.release();
         PageInterceptor interceptor = pageInterceptor;
         if (interceptor != null) {
             try {
@@ -444,10 +457,15 @@ public final class WebViewFactory {
     private static final class ManagedView {
         final WebSessionStrategy.Session session;
         final WebResourceMetadataObserver.Page page;
+        final SimpleWebChrome chrome;
+        final WebMediaCaptureBridge mediaCaptureBridge;
         final WebViewCallback callback;
         /** 记录已绑定实例，不允许跨会话重新绑定。 */
-        ManagedView(WebSessionStrategy.Session session, WebResourceMetadataObserver.Page page, WebViewCallback callback) {
-            this.session = session; this.page = page; this.callback = callback;
+        ManagedView(WebSessionStrategy.Session session, WebResourceMetadataObserver.Page page,
+                    SimpleWebChrome chrome, WebMediaCaptureBridge mediaCaptureBridge,
+                    WebViewCallback callback) {
+            this.session = session; this.page = page; this.chrome = chrome;
+            this.mediaCaptureBridge = mediaCaptureBridge; this.callback = callback;
         }
     }
 

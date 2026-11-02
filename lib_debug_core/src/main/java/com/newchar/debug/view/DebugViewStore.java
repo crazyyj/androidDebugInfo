@@ -11,6 +11,8 @@ import java.lang.ref.WeakReference;
 public final class DebugViewStore {
 
     private static WeakReference<DebugView> sDebugViewRef;
+    private static boolean sAudioCapturing;
+    private static boolean sVideoCapturing;
 
     private DebugViewStore() {
     }
@@ -23,6 +25,7 @@ public final class DebugViewStore {
     public static void attach(DebugView debugView) {
         if (debugView != null) {
             sDebugViewRef = new WeakReference<>(debugView);
+            debugView.updateWebMediaCaptureStatus(sAudioCapturing, sVideoCapturing);
         }
     }
 
@@ -49,5 +52,20 @@ public final class DebugViewStore {
             return null;
         }
         return sDebugViewRef.get();
+    }
+
+    /**
+     * 将网页媒体采集状态转交给当前附着的调试视图。
+     *
+     * @param audioCapturing 是否正在录音
+     * @param videoCapturing 是否正在拍摄
+     */
+    public static void updateWebMediaCaptureStatus(boolean audioCapturing, boolean videoCapturing) {
+        sAudioCapturing = audioCapturing;
+        sVideoCapturing = videoCapturing;
+        DebugView debugView = get();
+        if (debugView != null) {
+            debugView.updateWebMediaCaptureStatus(audioCapturing, videoCapturing);
+        }
     }
 }
